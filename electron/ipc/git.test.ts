@@ -442,6 +442,12 @@ function buildWorktreeMockHandler(opts: {
   showOutputs?: Record<string, string>;
   diffOutput?: string;
   statusPorcelain?: string;
+  /** Output of `git log --cherry-pick --right-only --reverse` — newline-separated SHAs. */
+  cherryPickUnique?: string;
+  /** Map of `<sha>^` → resolved parent SHA. */
+  parentLookup?: Record<string, string>;
+  /** Output of `git rev-list --count` for the refined range. */
+  refinedRangeCount?: string;
 }): MockHandler {
   const mergeBase = opts.mergeBase ?? MERGE_BASE;
 
@@ -460,6 +466,15 @@ function buildWorktreeMockHandler(opts: {
       return;
     }
 
+    // rev-parse <sha>^ — refinement looks up parent of oldest unique commit.
+    if (cmd === 'rev-parse' && args[1]?.endsWith('^')) {
+      const target = args[1];
+      const resolved = opts.parentLookup?.[target];
+      if (resolved !== undefined) cb(null, resolved + '\n', '');
+      else cb(new Error(`no parent for ${target}`), '', '');
+      return;
+    }
+
     // remoteTrackingRefExists: rev-parse --verify refs/remotes/origin/<branch>
     if (cmd === 'rev-parse' && args[1] === '--verify' && args[2]?.startsWith('refs/remotes/')) {
       cb(new Error('no remote'), '', '');
@@ -475,6 +490,18 @@ function buildWorktreeMockHandler(opts: {
     // merge-base
     if (cmd === 'merge-base') {
       cb(null, mergeBase + '\n', '');
+      return;
+    }
+
+    // log --cherry-pick --right-only — refinement's unique-commit list
+    if (cmd === 'log' && args.includes('--cherry-pick')) {
+      cb(null, opts.cherryPickUnique ?? '', '');
+      return;
+    }
+
+    // rev-list --count <parent>..<head> — refinement's contiguity check
+    if (cmd === 'rev-list' && args.includes('--count')) {
+      cb(null, (opts.refinedRangeCount ?? '0') + '\n', '');
       return;
     }
 
@@ -998,5 +1025,146 @@ describe('getFileDiff (worktree-based, merge-base diff)', () => {
     const result = await getFileDiff(uniqueWorktreePath(), 'file.ts', 'main');
 
     expect(result.newContent).toBe('disk content with local edits');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cherry-pick refinement: drops rebased patch-equivalent commits from the
+// diff range when the unique commits are contiguous at the tip.
+// ---------------------------------------------------------------------------
+
+describe('refineDiffBaseWithCherryPick (via getChangedFiles)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const UNIQUE_COMMIT = 'unique000abc';
+  const UNIQUE_PARENT = 'parent00xyz';
+
+  it('refines diff base to oldest unique commit parent when commits are contiguous at tip', async () => {
+    const calls: string[][] = [];
+    setupMock(
+      calls,
+      buildWorktreeMockHandler({
+        committedRawNumstat: rawNumstatEntry('feat.ts', 5, 1),
+        cherryPickUnique: UNIQUE_COMMIT,
+        parentLookup: { [`${UNIQUE_COMMIT}^`]: UNIQUE_PARENT },
+        refinedRangeCount: '1',
+      }),
+    );
+
+    await getChangedFiles(uniqueWorktreePath(), 'main');
+
+    // The committed-diff range should now use the refined parent SHA, not main.
+    const committedDiffCall = calls.find(
+      (a) =>
+        a[0] === 'diff' &&
+        a.includes('--raw') &&
+        a.includes('--numstat') &&
+        a.some((arg) => arg.endsWith(`...${HEAD_HASH}`)),
+    );
+    expect(committedDiffCall).toBeDefined();
+    expect(committedDiffCall).toContain(`${UNIQUE_PARENT}...${HEAD_HASH}`);
+  });
+
+  it('falls back to picked base when unique commits are interleaved with patch-equivalent ones', async () => {
+    const calls: string[][] = [];
+    setupMock(
+      calls,
+      buildWorktreeMockHandler({
+        committedRawNumstat: rawNumstatEntry('feat.ts', 5, 1),
+        cherryPickUnique: UNIQUE_COMMIT, // 1 unique
+        parentLookup: { [`${UNIQUE_COMMIT}^`]: UNIQUE_PARENT },
+        refinedRangeCount: '5', // 5 commits in the range → 4 are patch-equivalent
+      }),
+    );
+
+    await getChangedFiles(uniqueWorktreePath(), 'main');
+
+    const committedDiffCall = calls.find(
+      (a) =>
+        a[0] === 'diff' &&
+        a.includes('--raw') &&
+        a.includes('--numstat') &&
+        a.some((arg) => arg.endsWith(`...${HEAD_HASH}`)),
+    );
+    expect(committedDiffCall).toBeDefined();
+    // Falls back to the original picked ref (main), not the refined SHA.
+    expect(committedDiffCall).toContain(`main...${HEAD_HASH}`);
+  });
+
+  it('does not refine when branch is fully merged upstream (no unique commits)', async () => {
+    const calls: string[][] = [];
+    setupMock(
+      calls,
+      buildWorktreeMockHandler({
+        committedRawNumstat: '',
+        cherryPickUnique: '', // fully merged
+      }),
+    );
+
+    await getChangedFiles(uniqueWorktreePath(), 'main');
+
+    const committedDiffCall = calls.find(
+      (a) =>
+        a[0] === 'diff' &&
+        a.includes('--raw') &&
+        a.includes('--numstat') &&
+        a.some((arg) => arg.endsWith(`...${HEAD_HASH}`)),
+    );
+    expect(committedDiffCall).toBeDefined();
+    // No refinement attempted: range stays on the picked base ref.
+    expect(committedDiffCall).toContain(`main...${HEAD_HASH}`);
+
+    // Parent lookup must not be invoked when there are no unique commits.
+    const parentLookups = calls.filter((a) => a[0] === 'rev-parse' && a[1]?.endsWith('^'));
+    expect(parentLookups).toHaveLength(0);
+  });
+
+  it('falls back gracefully when parent lookup fails', async () => {
+    const calls: string[][] = [];
+    setupMock(
+      calls,
+      buildWorktreeMockHandler({
+        committedRawNumstat: rawNumstatEntry('feat.ts', 5, 1),
+        cherryPickUnique: UNIQUE_COMMIT,
+        parentLookup: {}, // empty → parent lookup throws
+        refinedRangeCount: '1',
+      }),
+    );
+
+    await getChangedFiles(uniqueWorktreePath(), 'main');
+
+    const committedDiffCall = calls.find(
+      (a) =>
+        a[0] === 'diff' &&
+        a.includes('--raw') &&
+        a.includes('--numstat') &&
+        a.some((arg) => arg.endsWith(`...${HEAD_HASH}`)),
+    );
+    expect(committedDiffCall).toBeDefined();
+    expect(committedDiffCall).toContain(`main...${HEAD_HASH}`);
+  });
+
+  it('uses refined SHA for the working-tree single-point diff (getAllFileDiffs)', async () => {
+    const calls: string[][] = [];
+    setupMock(
+      calls,
+      buildWorktreeMockHandler({
+        diffOutput: 'diff --git a/file.ts b/file.ts\n',
+        cherryPickUnique: UNIQUE_COMMIT,
+        parentLookup: { [`${UNIQUE_COMMIT}^`]: UNIQUE_PARENT },
+        refinedRangeCount: '1',
+      }),
+    );
+
+    await getAllFileDiffs(uniqueWorktreePath(), 'main');
+
+    const u3Call = calls.find((a) => a[0] === 'diff' && a.includes('-U3'));
+    expect(u3Call).toBeDefined();
+    // After refinement, single-point diff anchors on the refined parent SHA,
+    // not the original merge-base.
+    expect(u3Call).toContain(UNIQUE_PARENT);
+    expect(u3Call).not.toContain(MERGE_BASE);
   });
 });

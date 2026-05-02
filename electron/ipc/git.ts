@@ -45,8 +45,13 @@ interface PickedMergeBase {
   ref: string;
 }
 
+interface DiffBaseCacheEntry {
+  value: PickedMergeBase;
+  expiresAt: number;
+}
+
 const mainBranchCache = new Map<string, CacheEntry>();
-const mergeBaseCache = new Map<string, CacheEntry>();
+const mergeBaseCache = new Map<string, DiffBaseCacheEntry>();
 const MAIN_BRANCH_TTL = 60_000; // 60s
 const MERGE_BASE_TTL = 30_000; // 30s
 const MAX_BUFFER = 10 * 1024 * 1024; // 10MB
@@ -320,32 +325,81 @@ async function pickMergeBase(
 }
 
 /**
- * Resolve the diff base SHA for `head` against `baseBranch` (or the detected
- * main branch). Delegates ref-picking to `pickMergeBase`; falls back to
- * `headRef` when no candidate ref resolves so callers diff against themselves
- * (empty diff) rather than against the branch tip.
+ * Refine a picked merge-base by dropping commits that are patch-equivalent
+ * to ones already on `base.ref` (rebased duplicates from a prior `git merge`
+ * of the upstream that was later rebased onto a new base).
+ *
+ * Uses git's built-in patch-id detection via `--cherry-pick --right-only`.
+ * When the unique commits are contiguous at the tip (the common case for
+ * agent-driven branches), refines the base to the parent of the oldest
+ * unique commit so the diff range only contains real branch work.
+ *
+ * Falls back to the picked base unchanged when:
+ *  - There are no unique commits (branch fully merged upstream).
+ *  - Unique commits are interleaved with patch-equivalent ones (cannot
+ *    represent the result as a single base SHA — accepting the noise is
+ *    cheaper than stitching per-commit patches).
+ *  - Any git invocation fails (defensive).
  */
-async function detectMergeBase(
+async function refineDiffBaseWithCherryPick(
   repoRoot: string,
-  head?: string,
-  baseBranch?: string,
-): Promise<string> {
-  const branch = baseBranch ?? (await detectMainBranch(repoRoot));
-  const headRef = head ?? 'HEAD';
-  const key = `${cacheKey(repoRoot)}:${branch}:${headRef}`;
-  const cached = mergeBaseCache.get(key);
-  if (cached) {
-    if (cached.expiresAt > Date.now()) return cached.value;
-    mergeBaseCache.delete(key);
+  base: PickedMergeBase,
+  head: string,
+): Promise<PickedMergeBase> {
+  let unique: string[];
+  try {
+    const { stdout } = await exec(
+      'git',
+      [
+        'log',
+        '--cherry-pick',
+        '--right-only',
+        '--no-merges',
+        '--reverse',
+        '--pretty=%H',
+        `${base.ref}...${head}`,
+      ],
+      { cwd: repoRoot, maxBuffer: MAX_BUFFER },
+    );
+    unique = stdout
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return base;
   }
 
-  const picked = await pickMergeBase(repoRoot, branch, headRef);
-  if (picked) {
-    mergeBaseCache.set(key, { value: picked.sha, expiresAt: Date.now() + MERGE_BASE_TTL });
-    return picked.sha;
+  if (unique.length === 0) return base;
+
+  let parentSha: string;
+  try {
+    const { stdout } = await exec('git', ['rev-parse', `${unique[0]}^`], { cwd: repoRoot });
+    parentSha = stdout.trim();
+    if (!parentSha) return base;
+  } catch {
+    return base;
   }
 
-  return headRef;
+  let rangeCount: number;
+  try {
+    const { stdout } = await exec(
+      'git',
+      ['rev-list', '--count', '--no-merges', `${parentSha}..${head}`],
+      { cwd: repoRoot },
+    );
+    rangeCount = parseInt(stdout.trim(), 10);
+    if (isNaN(rangeCount)) return base;
+  } catch {
+    return base;
+  }
+
+  // Contiguous: every commit in (parent..HEAD] is unique → refine base.
+  // Interleaved: a non-unique commit sits between unique ones → keep the
+  // original base (the diff will still include the noise; UI can flag this).
+  if (rangeCount === unique.length) {
+    return { sha: parentSha, ref: parentSha };
+  }
+  return base;
 }
 
 /**
@@ -360,6 +414,9 @@ async function detectMergeBase(
  * HEAD, not the dirty working tree. For those callers, use `base.sha` as the
  * single diff start point (`git diff <merge-base-sha>`) so tracked local edits
  * remain visible.
+ *
+ * Result is post-refinement: rebased patch-equivalent commits are dropped from
+ * the diff range when possible. See `refineDiffBaseWithCherryPick`.
  */
 async function detectDiffBase(
   repoRoot: string,
@@ -368,8 +425,35 @@ async function detectDiffBase(
 ): Promise<PickedMergeBase> {
   const branch = baseBranch ?? (await detectMainBranch(repoRoot));
   const headRef = head ?? 'HEAD';
+  const key = `${cacheKey(repoRoot)}:${branch}:${headRef}`;
+  const cached = mergeBaseCache.get(key);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return cached.value;
+    mergeBaseCache.delete(key);
+  }
+
   const picked = await pickMergeBase(repoRoot, branch, headRef);
-  return picked ?? { sha: headRef, ref: headRef };
+  if (!picked) return { sha: headRef, ref: headRef };
+
+  const refined = await refineDiffBaseWithCherryPick(repoRoot, picked, headRef);
+  mergeBaseCache.set(key, { value: refined, expiresAt: Date.now() + MERGE_BASE_TTL });
+  return refined;
+}
+
+/**
+ * Resolve the diff base SHA for `head` against `baseBranch` (or the detected
+ * main branch). Falls back to `headRef` when no candidate ref resolves so
+ * callers diff against themselves (empty diff) rather than against the branch
+ * tip.
+ */
+async function detectMergeBase(
+  repoRoot: string,
+  head?: string,
+  baseBranch?: string,
+): Promise<string> {
+  const headRef = head ?? 'HEAD';
+  const result = await detectDiffBase(repoRoot, headRef, baseBranch);
+  return result.sha;
 }
 
 function oneWayDiffRange(base: PickedMergeBase, head: string): string {
