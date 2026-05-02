@@ -65,6 +65,7 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
   // --- Markdown file viewer ---
   const [mdViewerContent, setMdViewerContent] = createSignal('');
   const [mdViewerFileName, setMdViewerFileName] = createSignal('');
+  const [mdViewerFilePath, setMdViewerFilePath] = createSignal('');
   const [mdViewerOpen, setMdViewerOpen] = createSignal(false);
 
   const firstAgent = () => {
@@ -99,11 +100,13 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
       .then((content) => {
         setMdViewerContent(content);
         setMdViewerFileName(fileNameFromPath(filePath));
+        setMdViewerFilePath(filePath);
         setMdViewerOpen(true);
       })
       .catch((err) => {
         setMdViewerContent(`**Error loading file:** ${String(err)}`);
         setMdViewerFileName(fileNameFromPath(filePath));
+        setMdViewerFilePath(filePath);
         setMdViewerOpen(true);
       });
   }
@@ -258,6 +261,7 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
         onClose={() => setMdViewerOpen(false)}
         content={mdViewerContent()}
         fileName={mdViewerFileName()}
+        filePath={mdViewerFilePath()}
       />
     </>
   );
@@ -268,6 +272,7 @@ function MarkdownViewerDialog(props: {
   onClose: () => void;
   content: string;
   fileName: string;
+  filePath: string;
 }) {
   const html = createHighlightedMarkdown(() => props.content);
 
@@ -307,6 +312,28 @@ function MarkdownViewerDialog(props: {
           {props.fileName}
         </span>
         <span style={{ flex: '1' }} />
+        <Show when={props.filePath}>
+          <button
+            onClick={() => {
+              invoke(IPC.OpenPath, { filePath: props.filePath }).catch(console.error);
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: theme.fgMuted,
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              'align-items': 'center',
+              'border-radius': '4px',
+            }}
+            title="Open in editor"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M3.5 2a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-3a.75.75 0 0 1 1.5 0v3A3 3 0 0 1 12.5 16h-9A3 3 0 0 1 0 12.5v-9A3 3 0 0 1 3.5 0h3a.75.75 0 0 1 0 1.5h-3ZM10 .75a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V2.56L8.53 8.53a.75.75 0 0 1-1.06-1.06L13.44 1.5H10.75A.75.75 0 0 1 10 .75Z" />
+            </svg>
+          </button>
+        </Show>
         <button
           onClick={() => props.onClose()}
           style={{
