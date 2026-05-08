@@ -35,6 +35,7 @@ const ALLOWED_CHANNELS = new Set([
   'get_branch_commits',
   'get_commit_changed_files',
   'get_commit_diffs',
+  'get_uncommitted_file_diffs',
   'get_coverage_summary',
   'push_task',
   'rebase_task',
