@@ -1433,6 +1433,8 @@ export async function listImportableWorktrees(projectRoot: string): Promise<
     has_uncommitted_changes: boolean;
   }>
 > {
+  if (!(await isGitRepo(projectRoot))) return [];
+
   const projectRealPath = safeRealpath(projectRoot);
   const { stdout } = await exec('git', ['worktree', 'list', '--porcelain'], {
     cwd: projectRoot,

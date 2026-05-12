@@ -59,6 +59,7 @@ import {
   getFileDiff,
   getUncommittedChangedFiles,
   checkMergeStatus,
+  listImportableWorktrees,
 } from './git.js';
 
 type ExecFileCallback = (err: Error | null, stdout: string, stderr: string) => void;
@@ -1390,6 +1391,30 @@ describe('refineDiffBaseWithCherryPick (via getChangedFilesFromBranch)', () => {
     expect(diffCall).toBeDefined();
     // Range uses the refined parent SHA against the branch ref (not HEAD).
     expect(diffCall).toContain(`${PARENT}...feature`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listImportableWorktrees — importing existing worktrees is git-only, so plain
+// folders should not surface raw git errors in the renderer.
+// ---------------------------------------------------------------------------
+
+describe('listImportableWorktrees', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns no candidates for non-git project roots', async () => {
+    const calls: string[][] = [];
+    setupMock(calls, (args, cb) => {
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+        return cb(new Error('not a git repository'), '', 'fatal: not a git repository');
+      }
+      return cb(new Error(`unexpected git call: ${args.join(' ')}`), '', '');
+    });
+
+    await expect(listImportableWorktrees('/home/me/.codex')).resolves.toEqual([]);
+    expect(calls).toEqual([['rev-parse', '--show-toplevel']]);
   });
 });
 

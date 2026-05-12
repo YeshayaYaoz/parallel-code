@@ -214,6 +214,7 @@ export function Sidebar() {
 
     const project = store.projects.find((entry) => entry.id === projectId) ?? null;
     if (!project) return;
+    if (project.isGitRepo === false) return;
 
     try {
       const candidates = await invoke<ImportableWorktree[]>(IPC.ListImportableWorktrees, {
