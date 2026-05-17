@@ -24,6 +24,19 @@ function getDotShadow(attention?: TaskAttentionState): string | undefined {
   return `0 0 0 2px color-mix(in srgb, ${color} 22%, transparent)`;
 }
 
+export function getDotTooltip(status: TaskDotStatus, attention?: TaskAttentionState): string {
+  if (attention === 'active') return 'Active — agent is working';
+  if (attention === 'needs_input') return 'Waiting for input';
+  if (attention === 'error') return 'Error — agent exited with an error';
+  if (attention === 'ready') return 'Ready to merge';
+  return {
+    busy: 'Busy — agent recently active',
+    waiting: 'Waiting — no changes yet',
+    ready: 'Ready to merge',
+    review: 'Ready for review',
+  }[status];
+}
+
 export function StatusDot(props: {
   status: TaskDotStatus;
   size?: 'sm' | 'md';

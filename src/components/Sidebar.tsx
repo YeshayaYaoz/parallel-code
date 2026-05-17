@@ -33,7 +33,7 @@ import { EditProjectDialog } from './EditProjectDialog';
 import { ImportWorktreesDialog } from './ImportWorktreesDialog';
 import { SidebarFooter } from './SidebarFooter';
 import { IconButton } from './IconButton';
-import { StatusDot } from './StatusDot';
+import { StatusDot, getDotTooltip } from './StatusDot';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { mod } from '../lib/platform';
@@ -973,6 +973,7 @@ function TaskRow(props: TaskRowProps) {
           <div
             class={`task-item${t().closingStatus === 'removing' ? ' task-item-removing' : ' task-item-appearing'}`}
             data-task-index={idx()}
+            title={getDotTooltip(getTaskDotStatus(props.taskId))}
             onClick={() => {
               setActiveTask(props.taskId);
               focusSidebar();

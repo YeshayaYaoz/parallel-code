@@ -839,6 +839,7 @@ export function taskNeedsAttention(taskId: string): boolean {
 export function getTaskDotStatus(taskId: string): TaskDotStatus {
   const task = store.tasks[taskId];
   if (!task) return 'waiting';
+
   const active = activeAgents(); // reactive read
   const hasActive = hasRunningTaskActivity(taskId, (id) => active.has(id));
   if (hasActive) return 'busy';
