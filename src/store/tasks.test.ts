@@ -589,6 +589,26 @@ describe('MCP startup status transitions', () => {
     expect(mockTasks['coord-1'].mcpStartupError).toBeUndefined();
   });
 
+  it('allows Antigravity coordinator MCP startup with persisted config path and no launch args', async () => {
+    mockTasks['coord-1'] = {
+      agentIds: ['agent-coord'],
+      shellAgentIds: [],
+      coordinatorMode: true,
+      projectId: 'proj-1',
+      gitIsolation: 'worktree',
+      worktreePath: '/repo/.worktrees/coord',
+      mcpConfigPath: '/tmp/coord.json',
+    };
+    mockAgents['agent-coord'] = { def: { command: 'agy', args: [] } };
+    mockInvoke.mockResolvedValueOnce({ mcpLaunchArgs: [] });
+
+    markTaskMcpPending('coord-1');
+    await retryTaskMcpStartup('coord-1');
+
+    expect(mockTasks['coord-1'].mcpStartupStatus).toBe('ready');
+    expect(mockTasks['coord-1'].mcpStartupError).toBeUndefined();
+  });
+
   it('missing MCP launch args leaves a Codex coordinated task in error', async () => {
     mockTasks['coord-1'] = {
       agentIds: [],

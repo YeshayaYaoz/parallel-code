@@ -130,10 +130,13 @@ script runs non-interactively when piped and `mkdir -p`s its target. The trailin
   coordinator wiring — no in-`agy` subagent spawning. `agy` configures MCP via
   plugins/config rather than a CLI flag, so coordinator integration is a separate
   follow-up if desired; this change intentionally ships without it.
-- **Installer-script drift in Docker builds** → Piping a remote installer into the
-  image is less reproducible and could break builds if the URL/format changes.
-  Mitigation: pin behavior to the documented installer; treat a failed fetch as a
-  build error so it is caught at image-build time, not at task launch.
+- **Installer-script drift and supply-chain risk in Docker builds** → Piping a
+  remote installer into the image is less reproducible and could break builds, or
+  install unexpected code, if the upstream URL/format/content changes.
+  Mitigation: accepted for the bundled Docker agent image, which already tracks
+  latest CLI releases; the upstream installer verifies the release payload
+  checksum from its manifest, and failed fetch/checksum/install steps stop the
+  image build instead of surfacing at task launch.
 - **Duplicate `AgentDef` definitions drift** → The entry and the type live in two
   files. Mitigation: update both `electron/ipc/agents.ts` and `src/ipc/types.ts` in
   lockstep; TypeScript strict build catches shape mismatches.

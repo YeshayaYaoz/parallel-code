@@ -1342,11 +1342,18 @@ function isCodexCommand(command: string | undefined): boolean {
   return command?.split('/').pop()?.includes('codex') === true;
 }
 
+function isAntigravityCommand(command: string | undefined): boolean {
+  return command?.split('/').pop() === 'agy';
+}
+
 function taskRequiresMcpLaunchArgs(taskId: string): boolean {
   const task = store.tasks[taskId];
   if (!task) return true;
   const agentDef = task.agentIds[0] ? store.agents[task.agentIds[0]]?.def : undefined;
-  return isCodexCommand(agentDef?.command) || Boolean(task.mcpConfigPath);
+  return (
+    isCodexCommand(agentDef?.command) ||
+    (Boolean(task.mcpConfigPath) && !isAntigravityCommand(agentDef?.command))
+  );
 }
 
 export function applyTaskMcpLaunchResult(
