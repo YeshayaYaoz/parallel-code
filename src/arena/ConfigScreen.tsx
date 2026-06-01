@@ -1,4 +1,5 @@
 import { For, Show, createSignal } from 'solid-js';
+import { errMessage } from '../lib/log';
 import {
   arenaStore,
   updateCompetitor,
@@ -89,7 +90,7 @@ export function ConfigScreen() {
 
       startBattle(competitors);
     } catch (e) {
-      setFightError(e instanceof Error ? e.message : String(e));
+      setFightError(errMessage(e));
     } finally {
       setPreparing(false);
     }

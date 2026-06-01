@@ -1,4 +1,5 @@
 import { Show, type JSX } from 'solid-js';
+import { errMessage } from '../lib/log';
 import { store, getProject, showNotification, getPrChecks } from '../store/store';
 import { revealItemInDir, openInEditor } from '../lib/shell';
 import { InfoBar } from './InfoBar';
@@ -40,11 +41,7 @@ export function TaskBranchInfoBar(props: TaskBranchInfoBarProps) {
       const action = store.editorCommand
         ? openInEditor(store.editorCommand, projectPath)
         : revealItemInDir(projectPath);
-      action.catch((err) =>
-        showNotification(
-          `Could not open project folder: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      );
+      action.catch((err) => showNotification(`Could not open project folder: ${errMessage(err)}`));
       return;
     }
     if (store.editorCommand && !modKey) {
@@ -53,9 +50,7 @@ export function TaskBranchInfoBar(props: TaskBranchInfoBarProps) {
       );
     } else {
       revealItemInDir(props.task.worktreePath).catch((err) =>
-        showNotification(
-          `Could not open folder: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+        showNotification(`Could not open folder: ${errMessage(err)}`),
       );
     }
   };

@@ -3,6 +3,7 @@ import { arenaStore, markBranchMerged } from './store';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import type { BattleCompetitor } from './types';
+import { errMessage } from '../lib/log';
 
 type WorktreeStatus = { hasCommitted: boolean; hasUncommitted: boolean };
 
@@ -63,7 +64,7 @@ export function createMergeWorkflow() {
       });
       await doMerge(competitor);
     } catch (e) {
-      setMergeError(e instanceof Error ? e.message : String(e));
+      setMergeError(errMessage(e));
       setMerging(false);
     }
   }
@@ -78,7 +79,7 @@ export function createMergeWorkflow() {
       await invoke(IPC.DiscardUncommitted, { worktreePath: competitor.worktreePath });
       await doMerge(competitor);
     } catch (e) {
-      setMergeError(e instanceof Error ? e.message : String(e));
+      setMergeError(errMessage(e));
       setMerging(false);
     }
   }
@@ -108,7 +109,7 @@ export function createMergeWorkflow() {
       setMergedId(competitor.id);
       markBranchMerged(competitor.id);
     } catch (e) {
-      setMergeError(e instanceof Error ? e.message : String(e));
+      setMergeError(errMessage(e));
     } finally {
       setMerging(false);
     }

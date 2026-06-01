@@ -1,5 +1,6 @@
 import { createSignal, createEffect, Show, For, createUniqueId, on, createMemo } from 'solid-js';
 import { Dialog } from './Dialog';
+import { errMessage } from '../lib/log';
 import { theme, sectionLabelStyle } from '../lib/theme';
 import {
   generateThemePrompt,
@@ -86,7 +87,7 @@ export function CustomThemeDialog(props: CustomThemeDialogProps) {
       setError(null);
       setWarnings(checkThemeContrast(parsed.vars));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errMessage(e));
       setWarnings([]);
     }
   });
@@ -108,7 +109,7 @@ export function CustomThemeDialog(props: CustomThemeDialogProps) {
     try {
       await saveCustomTheme(newTheme);
     } catch (e) {
-      setSaveError(`Failed to save theme: ${e instanceof Error ? e.message : String(e)}`);
+      setSaveError(`Failed to save theme: ${errMessage(e)}`);
       return;
     }
     const newTone = detectThemeTone(result.vars);
@@ -347,9 +348,7 @@ export function CustomThemeDialog(props: CustomThemeDialogProps) {
                   await deleteCustomTheme(editId());
                   props.onClose();
                 } catch (e) {
-                  setSaveError(
-                    `Failed to delete theme: ${e instanceof Error ? e.message : String(e)}`,
-                  );
+                  setSaveError(`Failed to delete theme: ${errMessage(e)}`);
                 }
               }}
               style={{

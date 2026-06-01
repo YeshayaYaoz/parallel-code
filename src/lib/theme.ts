@@ -58,6 +58,33 @@ export const terminalBackground: Record<LookPreset, string> = {
   workbench: '#1f1f1f',
 };
 
+// GitHub-light-ish xterm palette (text, cursor, selection + 16 ANSI colors)
+// for light terminal backgrounds, so colored output (claude prompts,
+// ls --color, git status) stays legible on white. Shared by the built-in
+// islands-light preset and any custom theme with a light background.
+const LIGHT_TERMINAL_PALETTE = {
+  foreground: '#1f2329',
+  cursor: '#1f2329',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#cfe1ff',
+  black: '#24292e',
+  red: '#cf222e',
+  green: '#116329',
+  yellow: '#8a6d00',
+  blue: '#0550ae',
+  magenta: '#8250df',
+  cyan: '#1b7c83',
+  white: '#6e7781',
+  brightBlack: '#57606a',
+  brightRed: '#a40e26',
+  brightGreen: '#1a7f37',
+  brightYellow: '#633c01',
+  brightBlue: '#0969da',
+  brightMagenta: '#6639ba',
+  brightCyan: '#3192aa',
+  brightWhite: '#1f2329',
+} as const;
+
 /**
  * Returns an xterm-compatible theme object for the given preset.
  * For light-background presets we override xterm's defaults (white text,
@@ -65,31 +92,7 @@ export const terminalBackground: Record<LookPreset, string> = {
  */
 export function getTerminalTheme(preset: LookPreset) {
   if (preset === 'islands-light') {
-    return {
-      background: '#ffffff',
-      foreground: '#1f2329',
-      cursor: '#1f2329',
-      cursorAccent: '#ffffff',
-      selectionBackground: '#cfe1ff',
-      // GitHub-light-ish ANSI palette so colored output (claude prompts,
-      // ls --color, git status) stays legible on white.
-      black: '#24292e',
-      red: '#cf222e',
-      green: '#116329',
-      yellow: '#8a6d00',
-      blue: '#0550ae',
-      magenta: '#8250df',
-      cyan: '#1b7c83',
-      white: '#6e7781',
-      brightBlack: '#57606a',
-      brightRed: '#a40e26',
-      brightGreen: '#1a7f37',
-      brightYellow: '#633c01',
-      brightBlue: '#0969da',
-      brightMagenta: '#6639ba',
-      brightCyan: '#3192aa',
-      brightWhite: '#1f2329',
-    };
+    return { background: '#ffffff', ...LIGHT_TERMINAL_PALETTE };
   }
   return {
     background: terminalBackground[preset],
@@ -145,29 +148,7 @@ export function getTerminalThemeForCustom(bg: string) {
   })();
 
   if (isLight) {
-    return {
-      background: bg,
-      foreground: '#1f2329',
-      cursor: '#1f2329',
-      cursorAccent: '#ffffff',
-      selectionBackground: '#cfe1ff',
-      black: '#24292e',
-      red: '#cf222e',
-      green: '#116329',
-      yellow: '#8a6d00',
-      blue: '#0550ae',
-      magenta: '#8250df',
-      cyan: '#1b7c83',
-      white: '#6e7781',
-      brightBlack: '#57606a',
-      brightRed: '#a40e26',
-      brightGreen: '#1a7f37',
-      brightYellow: '#633c01',
-      brightBlue: '#0969da',
-      brightMagenta: '#6639ba',
-      brightCyan: '#3192aa',
-      brightWhite: '#1f2329',
-    };
+    return { background: bg, ...LIGHT_TERMINAL_PALETTE };
   }
   return { background: bg };
 }

@@ -4,7 +4,7 @@ import { sf } from '../lib/fontScale';
 import { Channel, invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { store } from '../store/store';
-import { warn as logWarn } from '../lib/log';
+import { warn as logWarn, errMessage } from '../lib/log';
 
 interface AskCodeCardProps {
   requestId: string;
@@ -65,7 +65,7 @@ export function AskCodeCard(props: AskCodeCardProps) {
       onOutput: channel,
       provider: store.askCodeProvider,
     }).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMessage(err));
       setLoading(false);
     });
   });

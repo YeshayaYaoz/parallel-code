@@ -1,5 +1,6 @@
 import { Show, createSignal, createEffect, createUniqueId, onCleanup } from 'solid-js';
 import { Dialog } from './Dialog';
+import { errMessage } from '../lib/log';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { createDialogScroll } from '../lib/dialog-scroll';
@@ -196,7 +197,7 @@ function DiffViewerContent(props: DiffViewerDialogProps) {
             baseBranch,
           });
         }
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errMessage(err);
         throw new Error(`Could not load diffs: ${msg}`);
       });
     }
@@ -210,7 +211,7 @@ function DiffViewerContent(props: DiffViewerDialogProps) {
       })
       .catch((err) => {
         if (thisGen !== fetchGeneration) return;
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errMessage(err));
       })
       .finally(() => {
         if (thisGen === fetchGeneration) setLoading(false);

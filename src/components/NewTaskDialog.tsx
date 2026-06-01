@@ -1,5 +1,6 @@
 import { createSignal, createEffect, createMemo, createUniqueId, Show, onCleanup } from 'solid-js';
 import { Dialog } from './Dialog';
+import { errMessage } from '../lib/log';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import {
@@ -572,9 +573,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
               branchName: baseBranch(),
             });
           } catch (err) {
-            setError(
-              `Cannot switch to "${baseBranch()}": ${err instanceof Error ? err.message : String(err)}`,
-            );
+            setError(`Cannot switch to "${baseBranch()}": ${errMessage(err)}`);
             return;
           }
         }

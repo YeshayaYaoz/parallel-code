@@ -1,4 +1,5 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, For, Show } from 'solid-js';
+import { errMessage } from '../lib/log';
 import {
   store,
   pickAndAddProject,
@@ -261,9 +262,7 @@ export function Sidebar() {
       }
     } catch (err) {
       console.error('Failed to scan importable worktrees:', err);
-      showNotification(
-        `Couldn't scan existing worktrees: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      showNotification(`Couldn't scan existing worktrees: ${errMessage(err)}`);
     }
   }
 

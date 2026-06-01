@@ -48,14 +48,6 @@ export function setVerbose(value: boolean): void {
   minLevel = value ? 'debug' : buildDefault;
 }
 
-export function getMinLevel(): LogLevel {
-  return minLevel;
-}
-
-export function isVerbose(): boolean {
-  return verbose;
-}
-
 export function debug(category: string, msg: string, ctx?: LogContext): void {
   emit('debug', category, msg, ctx);
 }
@@ -70,6 +62,18 @@ export function warn(category: string, msg: string, ctx?: LogContext): void {
 
 export function error(category: string, msg: string, err: unknown, ctx?: LogContext): void {
   emit('error', category, msg, ctx, err);
+}
+
+/** Reduce an unknown thrown value to a human-readable string.
+ *  Mirrors errMessage in electron/log.ts so both processes format errors identically. */
+export function errMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 function emit(

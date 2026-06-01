@@ -4,8 +4,8 @@ import { IPC } from '../../electron/ipc/channels';
 import { store, setStore } from './core';
 import type { WorktreeStatus } from '../ipc/types';
 import type { TaskGitStatusSnapshot } from './types';
-import { warn as logWarn } from '../lib/log';
-import { chunkContainsAgentPrompt } from '../../electron/mcp/prompt-detect';
+import { warn as logWarn, errMessage } from '../lib/log';
+import { chunkContainsAgentPrompt, stripAnsi } from '../../electron/mcp/prompt-detect';
 
 // --- Trust-specific patterns (subset of QUESTION_PATTERNS) ---
 // These are auto-accepted when autoTrustFolders is enabled.
@@ -111,16 +111,9 @@ export type TaskDotStatus = 'busy' | 'waiting' | 'ready' | 'review';
 export type TaskAttentionState = 'idle' | 'active' | 'needs_input' | 'error' | 'ready' | 'review';
 
 // --- Prompt detection helpers ---
-// Re-exported from shared module for backward compatibility.
-
-/** Strip ANSI escape sequences (CSI, OSC, and single-char escapes) from terminal output. */
-export function stripAnsi(text: string): string {
-  return text.replace(
-    // eslint-disable-next-line no-control-regex
-    /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nq-uy=><~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g,
-    '',
-  );
-}
+// stripAnsi lives in the shared prompt-detect module (single source of truth);
+// re-exported here for the store barrel and existing call sites.
+export { stripAnsi };
 
 /**
  * Patterns that indicate the agent is waiting for user input (i.e. idle).
@@ -901,10 +894,6 @@ const GIT_STATUS_STALE_MS = 5 * 60_000;
 const gitRefreshVersions = new Map<string, number>();
 const gitStatusStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function gitStatusErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 function isGitStatusUsable(git: TaskGitStatusSnapshot | undefined): git is TaskGitStatusSnapshot {
   return Boolean(
     git &&
@@ -1001,7 +990,7 @@ async function refreshTaskGitStatus(
         ? {
             ...previous,
             refreshing: false,
-            error: gitStatusErrorMessage(err),
+            error: errMessage(err),
           }
         : {
             has_committed_changes: false,
@@ -1009,7 +998,7 @@ async function refreshTaskGitStatus(
             current_branch: null,
             refreshedAt: 0,
             refreshing: false,
-            error: gitStatusErrorMessage(err),
+            error: errMessage(err),
           },
     );
   }

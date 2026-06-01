@@ -6,7 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { invoke, fireAndForget, Channel } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { getTerminalFontFamily } from '../lib/fonts';
-import { TERMINAL_SCROLLBACK_LINES } from '../lib/terminalConstants';
+import { TERMINAL_SCROLLBACK_LINES, base64ToUint8Array } from '../lib/terminalConstants';
 import { getTerminalTheme, getTerminalThemeForCustom } from '../lib/theme';
 import { matchesGlobalShortcut } from '../lib/shortcuts';
 import { isMac } from '../lib/platform';
@@ -47,30 +47,6 @@ type ClipboardPaste =
   | { kind: 'image'; path: string }
   | { kind: 'text'; text: string }
   | { kind: 'empty' };
-
-// Pre-computed base64 lookup table — avoids atob() intermediate string allocation.
-const B64_LOOKUP = new Uint8Array(128);
-for (let i = 0; i < 64; i++) {
-  B64_LOOKUP['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.charCodeAt(i)] = i;
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  let end = b64.length;
-  while (end > 0 && b64.charCodeAt(end - 1) === 61 /* '=' */) end--;
-  const out = new Uint8Array((end * 3) >>> 2);
-  let j = 0;
-  for (let i = 0; i < end; ) {
-    const a = B64_LOOKUP[b64.charCodeAt(i++)];
-    const b = i < end ? B64_LOOKUP[b64.charCodeAt(i++)] : 0;
-    const c = i < end ? B64_LOOKUP[b64.charCodeAt(i++)] : 0;
-    const d = i < end ? B64_LOOKUP[b64.charCodeAt(i++)] : 0;
-    const triplet = (a << 18) | (b << 12) | (c << 6) | d;
-    out[j++] = (triplet >>> 16) & 0xff;
-    if (j < out.length) out[j++] = (triplet >>> 8) & 0xff;
-    if (j < out.length) out[j++] = triplet & 0xff;
-  }
-  return out;
-}
 
 interface TerminalViewProps {
   taskId: string;
