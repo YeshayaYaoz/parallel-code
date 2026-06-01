@@ -104,16 +104,6 @@ export function connect(): void {
   };
 }
 
-export function disconnect(): void {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  ws?.close();
-  ws = null;
-  setStatus('disconnected');
-}
-
 export function send(msg: Record<string, unknown>): void {
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));

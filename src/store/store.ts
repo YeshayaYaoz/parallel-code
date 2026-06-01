@@ -105,7 +105,6 @@ export {
 export type { PanelId, PendingAction, TaskViewportVisibility } from './types';
 export { saveState, loadState, loadCustomThemes } from './persistence';
 export {
-  getGlobalScale,
   adjustGlobalScale,
   resetGlobalScale,
   getPanelUserSize,
@@ -119,7 +118,6 @@ export {
   toggleTaskFocusMode,
   setTaskSplitMode,
   setTerminalFont,
-  setThemePreset,
   applyAppearanceMode,
   markCustomThemesReady,
   setAppearanceMode,
@@ -127,7 +125,6 @@ export {
   setDarkTheme,
   saveCustomTheme,
   deleteCustomTheme,
-  activateCustomTheme,
   setAutoTrustFolders,
   setShowPlans,
   setShowPromptInput,

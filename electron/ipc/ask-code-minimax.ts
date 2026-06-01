@@ -23,10 +23,6 @@ export function setMinimaxApiKey(key: string): void {
   storedApiKey = key.trim();
 }
 
-export function getMinimaxApiKey(): string {
-  return storedApiKey;
-}
-
 export function askAboutCodeMinimax(win: BrowserWindow, args: MinimaxAskCodeRequest): void {
   const { requestId, channelId, prompt } = args;
   const apiKey = storedApiKey;

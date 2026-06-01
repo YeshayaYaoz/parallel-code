@@ -25,14 +25,3 @@ export function getToken(): string | null {
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
-
-/** Build an authenticated URL for API requests. */
-export function apiUrl(path: string): string {
-  return `${window.location.origin}${path}`;
-}
-
-/** Build headers with auth token. */
-export function authHeaders(): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}

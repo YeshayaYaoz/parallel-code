@@ -48,10 +48,6 @@ const swallowEpipe = (err: NodeJS.ErrnoException): void => {
 process.stdout.on('error', swallowEpipe);
 process.stderr.on('error', swallowEpipe);
 
-export function setMinLevel(level: LogLevel): void {
-  minLevel = level;
-}
-
 export function getMinLevel(): LogLevel {
   return minLevel;
 }

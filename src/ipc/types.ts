@@ -27,15 +27,6 @@ export interface CreateTaskResult {
   worktree_path: string;
 }
 
-export interface TaskInfo {
-  id: string;
-  name: string;
-  branch_name: string;
-  worktree_path: string;
-  agent_ids: string[];
-  status: 'Active' | 'Closed';
-}
-
 export interface ChangedFile {
   path: string;
   lines_added: number;
@@ -123,16 +114,6 @@ export interface PrChecksUpdatePayload {
    *  closed). The renderer should drop its bookkeeping so a later restart of
    *  the watcher (e.g. PR reopened) goes through cleanly. */
   cleared: boolean;
-}
-
-export interface StartPrChecksWatcherArgs {
-  taskId: string;
-  prUrl: string;
-  taskName: string;
-}
-
-export interface StopPrChecksWatcherArgs {
-  taskId: string;
 }
 
 // The main-process updater owns these types; re-exported so the renderer
