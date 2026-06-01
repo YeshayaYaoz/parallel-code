@@ -49,17 +49,6 @@ export function setActiveAgent(agentId: string): void {
   }
 }
 
-export function navigateAgent(direction: 'up' | 'down'): void {
-  const { activeTaskId, activeAgentId } = store;
-  if (!activeTaskId) return;
-  const task = store.tasks[activeTaskId];
-  if (!task) return;
-  const idx = activeAgentId ? task.agentIds.indexOf(activeAgentId) : -1;
-  const next =
-    direction === 'up' ? Math.max(0, idx - 1) : Math.min(task.agentIds.length - 1, idx + 1);
-  setStore('activeAgentId', task.agentIds[next]);
-}
-
 export function moveActiveTask(direction: 'left' | 'right'): void {
   const { taskOrder, activeTaskId } = store;
   if (!activeTaskId || taskOrder.length < 2) return;

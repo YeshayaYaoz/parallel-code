@@ -265,10 +265,6 @@ export function unfocusPlaceholder(): void {
   setStore('placeholderFocused', false);
 }
 
-export function setSidebarFocusedProjectId(id: string | null): void {
-  setStore('sidebarFocusedProjectId', id);
-}
-
 function focusTaskPanel(taskId: string, panel: string): void {
   setActiveTask(taskId);
   setTaskFocusedPanel(taskId, panel);

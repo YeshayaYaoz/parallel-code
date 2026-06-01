@@ -24,7 +24,6 @@ export {
   switchAgent,
   addCustomAgent,
   removeCustomAgent,
-  updateCustomAgent,
 } from './agents';
 export {
   createTask,
@@ -55,7 +54,6 @@ export {
   setNewTaskPrefillPrompt,
   setPlanContent,
   setStepsContent,
-  setTaskStepsEnabled,
   setTaskLastInputAt,
   markTaskUserActivity,
   setTaskPromptDraftActive,
@@ -73,7 +71,6 @@ export {
 export {
   setActiveTask,
   setActiveAgent,
-  navigateAgent,
   moveActiveTask,
   jumpToTask,
   toggleNewTaskDialog,
@@ -100,7 +97,6 @@ export {
   toggleHelpDialog,
   toggleSettingsDialog,
   sendActivePrompt,
-  setSidebarFocusedProjectId,
 } from './focus';
 export type { PanelId, PendingAction, TaskViewportVisibility } from './types';
 export { saveState, loadState, loadCustomThemes } from './persistence';

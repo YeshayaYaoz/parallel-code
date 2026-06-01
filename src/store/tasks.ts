@@ -1569,9 +1569,3 @@ export function clearTerminalInputPendingFromQuestion(taskId: string): void {
     setStore('tasks', taskId, 'terminalInputPendingFromQuestion', undefined);
   }
 }
-
-/** Toggles steps tracking for a task and remembers the choice as the new default. */
-export function setTaskStepsEnabled(taskId: string, enabled: boolean): void {
-  setStore('tasks', taskId, 'stepsEnabled', enabled || undefined);
-  setStore('showSteps', enabled); // remember as default for future tasks
-}

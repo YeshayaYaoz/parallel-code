@@ -158,16 +158,6 @@ export function removeCustomAgent(agentId: string): void {
   void refreshAvailableAgents();
 }
 
-export function updateCustomAgent(agentId: string, updated: AgentDef): void {
-  setStore(
-    produce((s) => {
-      const idx = s.customAgents.findIndex((a) => a.id === agentId);
-      if (idx >= 0) s.customAgents[idx] = updated;
-    }),
-  );
-  void refreshAvailableAgents();
-}
-
 /** Rebuild availableAgents from backend defaults + custom agents. */
 async function refreshAvailableAgents(): Promise<void> {
   const defaults = await invoke<AgentDef[]>(IPC.ListAgents);
