@@ -1575,17 +1575,55 @@ export class Coordinator {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
+  // --- Per-task teardown helpers ---
+  // Shared by cleanupLandedTaskResources, removeCoordinatedTask, cleanupTask,
+  // and deregisterCoordinator so the four paths can't drift apart.
+
+  /** Stop receiving PTY output for an agent and drop its subscriber callback. */
+  private unsubscribeAgentOutput(agentId: string): void {
+    const cb = this.subscribers.get(agentId);
+    if (cb) {
+      unsubscribeFromAgent(agentId, cb);
+      this.subscribers.delete(agentId);
+    }
+  }
+
+  /** Drop the per-agent output buffers (tail, bracketed-paste flag, decoder). */
+  private clearAgentBuffers(agentId: string): void {
+    this.tailBuffers.delete(agentId);
+    this.bracketedPasteAgentIds.delete(agentId);
+    this.decoders.delete(agentId);
+  }
+
+  /** Best-effort removal of a task's per-sub-task MCP config file. */
+  private unlinkMcpConfigFile(path: string | undefined): void {
+    if (!path) return;
+    try {
+      unlinkSync(path);
+    } catch {
+      /* already gone */
+    }
+  }
+
+  /** Resolve any pending waitForIdle callers for a task and clear the entry. */
+  private resolveIdleWaiters(
+    taskId: string,
+    reason: 'idle' | 'human_control' | 'exited' | 'removed',
+  ): void {
+    const resolvers = this.idleResolvers.get(taskId);
+    if (resolvers?.length) {
+      for (const resolve of resolvers) resolve({ reason });
+    }
+    this.idleResolvers.delete(taskId);
+  }
+
   private async cleanupLandedTaskResources(task: CoordinatedTask): Promise<void> {
     this.closingTaskIds.add(task.id);
     try {
       this.suppressPendingNotificationForTask(task);
       this.queueLandedNotification(task);
 
-      const cb = this.subscribers.get(task.agentId);
-      if (cb) {
-        unsubscribeFromAgent(task.agentId, cb);
-        this.subscribers.delete(task.agentId);
-      }
+      this.unsubscribeAgentOutput(task.agentId);
 
       try {
         killAgent(task.agentId);
@@ -1600,21 +1638,9 @@ export class Coordinator {
         projectRoot: task.projectRoot,
       });
 
-      const idleResolvers = this.idleResolvers.get(task.id);
-      if (idleResolvers?.length) {
-        for (const resolve of idleResolvers) resolve({ reason: 'exited' });
-      }
-      this.idleResolvers.delete(task.id);
-      this.tailBuffers.delete(task.agentId);
-      this.bracketedPasteAgentIds.delete(task.agentId);
-      this.decoders.delete(task.agentId);
-      if (task.mcpConfigPath) {
-        try {
-          unlinkSync(task.mcpConfigPath);
-        } catch {
-          /* already gone */
-        }
-      }
+      this.resolveIdleWaiters(task.id, 'exited');
+      this.clearAgentBuffers(task.agentId);
+      this.unlinkMcpConfigFile(task.mcpConfigPath);
       task.mcpConfigPath = undefined;
       task.status = 'exited';
       task.exitCode = 0;
@@ -1834,29 +1860,10 @@ export class Coordinator {
 
     this.suppressPendingNotificationForTask(task);
 
-    const cb = this.subscribers.get(task.agentId);
-    if (cb) {
-      unsubscribeFromAgent(task.agentId, cb);
-      this.subscribers.delete(task.agentId);
-    }
-
-    this.tailBuffers.delete(task.agentId);
-    this.bracketedPasteAgentIds.delete(task.agentId);
-    this.decoders.delete(task.agentId);
-
-    const resolvers = this.idleResolvers.get(taskId);
-    if (resolvers) {
-      for (const resolve of resolvers) resolve({ reason: 'removed' });
-      this.idleResolvers.delete(taskId);
-    }
-
-    if (task.mcpConfigPath) {
-      try {
-        unlinkSync(task.mcpConfigPath);
-      } catch {
-        /* already gone */
-      }
-    }
+    this.unsubscribeAgentOutput(task.agentId);
+    this.clearAgentBuffers(task.agentId);
+    this.resolveIdleWaiters(taskId, 'removed');
+    this.unlinkMcpConfigFile(task.mcpConfigPath);
 
     // For Docker sub-tasks, the UI calls killAgent before removeCoordinatedTask,
     // which stops the sub-task's own container via stopDockerContainer in pty.ts.
@@ -1874,11 +1881,7 @@ export class Coordinator {
     this.suppressPendingNotificationForTask(task);
 
     // Unsubscribe from PTY output
-    const cb = this.subscribers.get(task.agentId);
-    if (cb) {
-      unsubscribeFromAgent(task.agentId, cb);
-      this.subscribers.delete(task.agentId);
-    }
+    this.unsubscribeAgentOutput(task.agentId);
 
     // Kill the agent. For Docker sub-tasks, killAgent also calls docker stop on the
     // sub-task's own container (via stopDockerContainer in pty.ts), which cleanly
@@ -1911,11 +1914,7 @@ export class Coordinator {
 
     // Clean up internal state — resolve idle and signal waiters before deleting
     // so callers don't hang until their own timeout fires.
-    const idleResolvers = this.idleResolvers.get(taskId);
-    if (idleResolvers?.length) {
-      for (const resolve of idleResolvers) resolve({ reason: 'exited' });
-    }
-    this.idleResolvers.delete(taskId);
+    this.resolveIdleWaiters(taskId, 'exited');
     const coordinatorId = task.coordinatorTaskId;
     const anyResolvers = this.anySignalResolvers.get(coordinatorId);
     // Guard against double-resolve: the PTY exit handler (onPtyEvent 'exit') may have
@@ -1936,17 +1935,9 @@ export class Coordinator {
       });
       this.finishSignalWait(coordinatorId);
     }
-    this.tailBuffers.delete(task.agentId);
-    this.bracketedPasteAgentIds.delete(task.agentId);
-    this.decoders.delete(task.agentId);
+    this.clearAgentBuffers(task.agentId);
     // Delete per-task MCP config tmp file
-    if (task.mcpConfigPath) {
-      try {
-        unlinkSync(task.mcpConfigPath);
-      } catch {
-        /* already gone */
-      }
-    }
+    this.unlinkMcpConfigFile(task.mcpConfigPath);
     this.tasks.delete(taskId);
     this.clearPromptDeliveryState(taskId);
     this.controlMap.delete(taskId);
@@ -2085,9 +2076,7 @@ export class Coordinator {
       return { mcpLaunchArgs };
     } catch (err) {
       // Clean up partial map entries so the agentId doesn't linger in state.
-      this.tailBuffers.delete(agentId);
-      this.bracketedPasteAgentIds.delete(agentId);
-      this.decoders.delete(agentId);
+      this.clearAgentBuffers(agentId);
       this.subscribers.delete(agentId);
       this.clearPromptDeliveryState(task.id);
       this.tasks.delete(task.id);
@@ -2250,22 +2239,12 @@ export class Coordinator {
       if (task.coordinatorTaskId !== coordinatorTaskId) continue;
 
       // Unsubscribe PTY output callback (stop receiving output, but keep task record)
-      const cb = this.subscribers.get(task.agentId);
-      if (cb) {
-        unsubscribeFromAgent(task.agentId, cb);
-        this.subscribers.delete(task.agentId);
-      }
-      this.tailBuffers.delete(task.agentId);
-      this.bracketedPasteAgentIds.delete(task.agentId);
-      this.decoders.delete(task.agentId);
+      this.unsubscribeAgentOutput(task.agentId);
+      this.clearAgentBuffers(task.agentId);
       this.clearPromptDeliveryState(taskId);
 
       // Resolve pending idle waiters so callers aren't left hanging
-      const resolvers = this.idleResolvers.get(taskId);
-      if (resolvers) {
-        for (const resolve of resolvers) resolve({ reason: 'exited' });
-        this.idleResolvers.delete(taskId);
-      }
+      this.resolveIdleWaiters(taskId, 'exited');
 
       // If the prompt hadn't been delivered yet, silence future orphaned notifications:
       // the task never started real work so there's nothing to review. If the prompt
@@ -2280,14 +2259,8 @@ export class Coordinator {
       // Transfer control to human so the user can decide what to do with orphaned tasks
       this.controlMap.set(taskId, 'human');
 
-      if (task.mcpConfigPath) {
-        try {
-          unlinkSync(task.mcpConfigPath);
-        } catch {
-          /* already gone */
-        }
-        task.mcpConfigPath = undefined;
-      }
+      this.unlinkMcpConfigFile(task.mcpConfigPath);
+      task.mcpConfigPath = undefined;
 
       // Notify the frontend so it can detach children consistently regardless
       // of whether backend deregistration or renderer close cleanup wins the IPC race.
