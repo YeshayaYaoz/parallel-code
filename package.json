@@ -86,6 +86,9 @@
     "vitest": "^4.0.18",
     "wait-on": "^9.0.4"
   },
+  "overrides": {
+    "dompurify": "$dompurify"
+  },
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint --max-warnings 0 --no-warn-ignored",
