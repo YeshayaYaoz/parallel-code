@@ -117,6 +117,7 @@ export interface Task {
   dockerSource?: DockerSource;
   dockerImage?: string;
   githubUrl?: string;
+  prUrl?: string;
   collapsed?: boolean;
   savedAgentDef?: AgentDef;
   savedAgentDefs?: AgentDef[];
@@ -185,6 +186,7 @@ export interface PersistedTask {
   dockerSource?: DockerSource;
   dockerImage?: string;
   githubUrl?: string;
+  prUrl?: string;
   savedInitialPrompt?: string;
   collapsed?: boolean;
   savedSelectedAgentIndex?: number;

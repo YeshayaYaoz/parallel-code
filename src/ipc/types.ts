@@ -116,6 +116,11 @@ export interface PrChecksUpdatePayload {
   cleared: boolean;
 }
 
+export interface BranchPrDetectionResult {
+  url: string | null;
+  unavailable?: 'missing' | 'auth';
+}
+
 // The main-process updater owns these types; re-exported so the renderer
 // shares one source of truth and cannot drift from it.
 export type { UpdatePhase, UpdateStatus } from '../../electron/ipc/updater';

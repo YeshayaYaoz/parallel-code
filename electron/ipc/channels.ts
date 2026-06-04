@@ -137,6 +137,7 @@ export enum IPC {
   StartPrChecksWatcher = 'start_pr_checks_watcher',
   StopPrChecksWatcher = 'stop_pr_checks_watcher',
   DetectPrForBranch = 'detect_pr_for_branch',
+  RefreshPrChecksWatcher = 'refresh_pr_checks_watcher',
   PrChecksUpdate = 'pr_checks_update',
 
   // Logging

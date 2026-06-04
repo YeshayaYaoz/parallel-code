@@ -97,6 +97,25 @@ export function TaskTitleBar(props: TaskTitleBarProps) {
     }
     return displayTaskNameFromPrompt(initialPrompt) || props.task.name;
   };
+  const ciChecks = () => {
+    const c = getPrChecks(props.task.id);
+    return c && c.overall !== 'none' ? c : null;
+  };
+  const ciTitle = (): string => {
+    const c = ciChecks();
+    if (!c) return '';
+    if (c.overall === 'pending') {
+      return `CI running — ${c.pending} pending, ${c.passing} passing${c.failing ? `, ${c.failing} failing` : ''}`;
+    }
+    if (c.overall === 'success') {
+      return `CI passed — ${c.passing} check${c.passing === 1 ? '' : 's'}`;
+    }
+    return `CI failed — ${c.failing} failing, ${c.passing} passing${c.pending ? `, ${c.pending} pending` : ''}`;
+  };
+  const pushTitle = () => {
+    const ci = ciTitle();
+    return ci ? `Push to remote\n${ci}` : 'Push to remote';
+  };
 
   function handleTitleMouseDown(e: MouseEvent) {
     handleDragReorder(e, {
@@ -237,93 +256,73 @@ export function TaskTitleBar(props: TaskTitleBarProps) {
                   </svg>
                 }
                 onClick={() => props.onPush()}
-                title="Push to remote"
+                title={pushTitle()}
               />
             </Show>
-            {(() => {
-              const ciChecks = () => {
-                const c = getPrChecks(props.task.id);
-                return c && c.overall !== 'none' ? c : null;
-              };
-              const ciTitle = (): string => {
-                const c = ciChecks();
-                if (!c) return '';
-                if (c.overall === 'pending') {
-                  return `CI running — ${c.pending} pending, ${c.passing} passing${c.failing ? `, ${c.failing} failing` : ''}`;
-                }
-                if (c.overall === 'success') {
-                  return `CI passed — ${c.passing} check${c.passing === 1 ? '' : 's'}`;
-                }
-                return `CI failed — ${c.failing} failing, ${c.passing} passing${c.pending ? `, ${c.pending} pending` : ''}`;
-              };
-              return (
-                <Show
-                  when={ciChecks()}
-                  fallback={
-                    <Show when={props.pushSuccess}>
-                      <div
-                        style={{
-                          position: 'absolute',
-                          bottom: '-4px',
-                          right: '-4px',
-                          width: '12px',
-                          height: '12px',
-                          'border-radius': '50%',
-                          background: theme.success,
-                          display: 'flex',
-                          'align-items': 'center',
-                          'justify-content': 'center',
-                          'pointer-events': 'none',
-                        }}
-                      >
-                        <svg width="8" height="8" viewBox="0 0 16 16" fill="white">
-                          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
-                        </svg>
-                      </div>
-                    </Show>
-                  }
-                >
-                  {(c) => (
-                    <div
-                      title={ciTitle()}
-                      style={{
-                        position: 'absolute',
-                        bottom: '-4px',
-                        right: '-4px',
-                        width: '14px',
-                        height: '14px',
-                        'border-radius': '50%',
-                        background:
-                          c().overall === 'pending'
-                            ? 'transparent'
-                            : c().overall === 'success'
-                              ? theme.success
-                              : theme.error,
-                        display: 'flex',
-                        'align-items': 'center',
-                        'justify-content': 'center',
-                        color: c().overall === 'pending' ? theme.warning : 'white',
-                        'pointer-events': 'none',
-                      }}
-                    >
-                      <Show when={c().overall === 'pending'}>
-                        <span class="inline-spinner" style={{ width: '12px', height: '12px' }} />
-                      </Show>
-                      <Show when={c().overall === 'success'}>
-                        <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor">
-                          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
-                        </svg>
-                      </Show>
-                      <Show when={c().overall === 'failure'}>
-                        <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor">
-                          <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
-                        </svg>
-                      </Show>
-                    </div>
-                  )}
+            <Show
+              when={ciChecks()}
+              fallback={
+                <Show when={props.pushSuccess}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '-4px',
+                      right: '-4px',
+                      width: '12px',
+                      height: '12px',
+                      'border-radius': '50%',
+                      background: theme.success,
+                      display: 'flex',
+                      'align-items': 'center',
+                      'justify-content': 'center',
+                      'pointer-events': 'none',
+                    }}
+                  >
+                    <svg width="8" height="8" viewBox="0 0 16 16" fill="white">
+                      <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+                    </svg>
+                  </div>
                 </Show>
-              );
-            })()}
+              }
+            >
+              {(c) => (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '-4px',
+                    right: '-4px',
+                    width: '14px',
+                    height: '14px',
+                    'border-radius': '50%',
+                    background:
+                      c().overall === 'pending'
+                        ? 'transparent'
+                        : c().overall === 'success'
+                          ? theme.success
+                          : theme.error,
+                    display: 'flex',
+                    'align-items': 'center',
+                    'justify-content': 'center',
+                    color: c().overall === 'pending' ? theme.warning : 'white',
+                    'pointer-events': 'none',
+                  }}
+                >
+                  <Show when={c().overall === 'pending'}>
+                    <span class="inline-spinner" style={{ width: '12px', height: '12px' }} />
+                  </Show>
+                  <Show when={c().overall === 'success'}>
+                    <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+                    </svg>
+                  </Show>
+                  <Show when={c().overall === 'failure'}>
+                    <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+                    </svg>
+                  </Show>
+                </div>
+              )}
+            </Show>
           </div>
         </Show>
         <IconButton

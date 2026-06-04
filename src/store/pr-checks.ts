@@ -5,7 +5,12 @@ import { fireAndForget, invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { parseGitHubUrl } from '../lib/github-url';
 import { saveState } from './persistence';
-import type { PrChecksOverall, PrChecksUpdatePayload, PrCheckRun } from '../ipc/types';
+import type {
+  BranchPrDetectionResult,
+  PrChecksOverall,
+  PrChecksUpdatePayload,
+  PrCheckRun,
+} from '../ipc/types';
 import type { Task } from './types';
 
 export interface PrChecksState {
@@ -40,11 +45,15 @@ function removePrChecks(taskId: string): void {
   );
 }
 
-function prUrlFor(githubUrl: string | undefined): string | null {
-  if (!githubUrl) return null;
-  const parsed = parseGitHubUrl(githubUrl);
+function parsePrUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  const parsed = parseGitHubUrl(url);
   if (!parsed || parsed.type !== 'pull' || !parsed.number) return null;
-  return githubUrl;
+  return url;
+}
+
+function taskPrUrl(task: Task): string | null {
+  return parsePrUrl(task.prUrl) ?? parsePrUrl(task.githubUrl);
 }
 
 interface BranchPrCandidate {
@@ -54,7 +63,7 @@ interface BranchPrCandidate {
 }
 
 function branchPrCandidateFor(task: Task): BranchPrCandidate | null {
-  if (prUrlFor(task.githubUrl)) return null;
+  if (taskPrUrl(task)) return null;
   if (task.gitIsolation !== 'worktree') return null;
   if (!task.worktreePath || !task.branchName) return null;
   return {
@@ -71,25 +80,32 @@ export function startPrChecksSubscription(): () => void {
   const activeByTaskId = new Map<string, { prUrl: string; taskName: string }>();
   const branchProbeByTaskId = new Map<string, { key: string; attemptedAt: number }>();
   const pendingBranchProbes = new Set<string>();
+  let branchPrDetectionDisabled = false;
 
   const detectBranchPr = (taskId: string, candidate: BranchPrCandidate): void => {
-    if (pendingBranchProbes.has(taskId)) return;
+    if (branchPrDetectionDisabled || pendingBranchProbes.has(taskId)) return;
     pendingBranchProbes.add(taskId);
-    invoke<string | null>(IPC.DetectPrForBranch, {
+    invoke<BranchPrDetectionResult>(IPC.DetectPrForBranch, {
       worktreePath: candidate.worktreePath,
       branchName: candidate.branchName,
     })
-      .then((url) => {
+      .then((result) => {
+        if (result?.unavailable) {
+          branchPrDetectionDisabled = true;
+          branchProbeByTaskId.clear();
+          return;
+        }
+        const url = result?.url;
         if (!url) return;
         const task = store.tasks[taskId];
-        if (!task || prUrlFor(task.githubUrl)) return;
+        if (!task || taskPrUrl(task)) return;
         if (
           task.worktreePath !== candidate.worktreePath ||
           task.branchName !== candidate.branchName
         ) {
           return;
         }
-        setStore('tasks', taskId, 'githubUrl', url);
+        setStore('tasks', taskId, 'prUrl', url);
         void saveState();
       })
       .catch((err: unknown) => {
@@ -101,6 +117,7 @@ export function startPrChecksSubscription(): () => void {
   };
 
   const scanForBranchPrs = (): void => {
+    if (branchPrDetectionDisabled) return;
     const seen = new Set<string>();
     const now = Date.now();
     const allIds = [...store.taskOrder, ...store.collapsedTaskOrder];
@@ -110,6 +127,7 @@ export function startPrChecksSubscription(): () => void {
       const candidate = branchPrCandidateFor(task);
       if (!candidate) continue;
       seen.add(taskId);
+      if (pendingBranchProbes.has(taskId)) continue;
       const prev = branchProbeByTaskId.get(taskId);
       if (
         prev &&
@@ -155,7 +173,7 @@ export function startPrChecksSubscription(): () => void {
     for (const taskId of allIds) {
       const task = store.tasks[taskId];
       if (!task) continue;
-      const prUrl = prUrlFor(task.githubUrl);
+      const prUrl = taskPrUrl(task);
       if (!prUrl) continue;
       seen.add(taskId);
       const prev = activeByTaskId.get(taskId);

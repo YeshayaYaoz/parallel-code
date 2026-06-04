@@ -1437,6 +1437,7 @@ textarea::placeholder {
 
 .inline-spinner {
   display: inline-block;
+  box-sizing: border-box;
   width: 12px;
   height: 12px;
   border-radius: 999px;

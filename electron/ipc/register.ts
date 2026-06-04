@@ -32,6 +32,7 @@ import {
   startPrChecksWatcher,
   stopPrChecksWatcher,
   detectPrUrlForBranch,
+  refreshPrChecksWatcher,
   isPrUrl,
 } from './pr-checks.js';
 import { readCoverageSummary } from './coverage.js';
@@ -837,15 +838,24 @@ export function registerAllHandlers(win: BrowserWindow): void {
     stopPrChecksWatcher(args.taskId);
   });
   ipcMain.handle(IPC.DetectPrForBranch, (_e, args) => {
-    assertString(args.worktreePath, 'worktreePath');
-    assertString(args.branchName, 'branchName');
-    return detectPrUrlForBranch(args.worktreePath, args.branchName).catch((err: unknown) => {
-      const code = (err as NodeJS.ErrnoException)?.code;
-      const stderr = (err as { stderr?: string })?.stderr ?? '';
-      if (code === 'ENOENT' || /not logged into|authentication required/i.test(stderr)) return null;
-      console.warn('[pr-checks] branch PR detection failed:', (err as Error)?.message ?? err);
-      return null;
-    });
+    validatePath(args.worktreePath, 'worktreePath');
+    validateBranchName(args.branchName, 'branchName');
+    return detectPrUrlForBranch(args.worktreePath, args.branchName)
+      .then((url) => ({ url }))
+      .catch((err: unknown) => {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        const stderr = (err as { stderr?: string })?.stderr ?? '';
+        if (code === 'ENOENT') return { url: null, unavailable: 'missing' };
+        if (/not logged into|authentication required/i.test(stderr)) {
+          return { url: null, unavailable: 'auth' };
+        }
+        console.warn('[pr-checks] branch PR detection failed:', (err as Error)?.message ?? err);
+        return { url: null };
+      });
+  });
+  ipcMain.handle(IPC.RefreshPrChecksWatcher, (_e, args) => {
+    assertString(args.taskId, 'taskId');
+    refreshPrChecksWatcher(args.taskId);
   });
 
   // --- Steps content (one-shot read) ---

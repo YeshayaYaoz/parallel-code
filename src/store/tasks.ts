@@ -620,6 +620,9 @@ export async function pushTask(taskId: string, onOutput: Channel<string>): Promi
     branchName: task.branchName,
     onOutput,
   });
+  void invoke(IPC.RefreshPrChecksWatcher, { taskId }).catch((err: unknown) =>
+    logWarn('tasks', 'Failed to refresh PR checks after push', { err: String(err) }),
+  );
 }
 
 export function updateTaskName(taskId: string, name: string): void {

@@ -42,13 +42,13 @@ import {
 } from './pr-checks.js';
 
 type ExecCb = (err: Error | null, stdout: string, stderr: string) => void;
-type GhHandler = (args: string[], cb: ExecCb) => void;
+type GhHandler = (args: string[], cb: ExecCb, cmd: string) => void;
 
 function stubGh(handler: GhHandler): string[][] {
   const calls: string[][] = [];
-  const impl = (_cmd: string, args: string[], _opts: unknown, cb: ExecCb) => {
+  const impl = (cmd: string, args: string[], _opts: unknown, cb: ExecCb) => {
     calls.push(args);
-    handler(args, cb);
+    handler(args, cb, cmd);
   };
   vi.mocked(execFile).mockImplementation(impl as unknown as typeof execFile);
   return calls;
@@ -206,13 +206,33 @@ describe('detectPrUrlForBranch', () => {
   });
 
   it('finds an open PR for a branch', async () => {
-    const calls = stubGh((_args, cb) =>
-      cb(null, JSON.stringify([{ url: 'https://github.com/a/b/pull/12' }]), ''),
-    );
+    const calls = stubGh((_args, cb, cmd) => {
+      if (cmd === 'git') {
+        cb(null, 'abc123\n', '');
+        return;
+      }
+      cb(
+        null,
+        JSON.stringify([
+          {
+            url: 'https://github.com/a/b/pull/11',
+            headRefName: 'task/my-branch',
+            headRefOid: 'old',
+          },
+          {
+            url: 'https://github.com/a/b/pull/12',
+            headRefName: 'task/my-branch',
+            headRefOid: 'abc123',
+          },
+        ]),
+        '',
+      );
+    });
     await expect(detectPrUrlForBranch('/repo/worktree', 'task/my-branch')).resolves.toBe(
       'https://github.com/a/b/pull/12',
     );
-    expect(calls[0]).toEqual([
+    expect(calls[0]).toEqual(['rev-parse', 'task/my-branch']);
+    expect(calls[1]).toEqual([
       'pr',
       'list',
       '--state',
@@ -220,20 +240,32 @@ describe('detectPrUrlForBranch', () => {
       '--head',
       'task/my-branch',
       '--json',
-      'url',
+      'url,headRefName,headRefOid',
       '--limit',
-      '1',
+      '20',
     ]);
   });
 
   it('returns null when the branch has no open PR', async () => {
-    stubGh((_args, cb) => cb(null, JSON.stringify([]), ''));
+    stubGh((_args, cb, cmd) => cb(null, cmd === 'git' ? 'abc123\n' : JSON.stringify([]), ''));
     await expect(detectPrUrlForBranch('/repo/worktree', 'task/no-pr')).resolves.toBe(null);
   });
 
   it('rejects malformed PR URLs from gh output', async () => {
-    stubGh((_args, cb) =>
-      cb(null, JSON.stringify([{ url: 'https://github.com/a/b/issues/12' }]), ''),
+    stubGh((_args, cb, cmd) =>
+      cb(
+        null,
+        cmd === 'git'
+          ? 'abc123\n'
+          : JSON.stringify([
+              {
+                url: 'https://github.com/a/b/issues/12',
+                headRefName: 'task/issue',
+                headRefOid: 'abc123',
+              },
+            ]),
+        '',
+      ),
     );
     await expect(detectPrUrlForBranch('/repo/worktree', 'task/issue')).resolves.toBe(null);
   });

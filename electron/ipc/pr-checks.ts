@@ -7,6 +7,7 @@ const exec = promisify(execFile);
 
 const TICK_MS = 30_000;
 const SETTLED_REFRESH_MS = 5 * 60_000;
+const POST_PUSH_REFRESH_GRACE_MS = 2 * 60_000;
 const GH_TIMEOUT_MS = 15_000;
 const GH_MAX_BUFFER = 4 * 1024 * 1024;
 
@@ -44,6 +45,8 @@ interface TaskEntry {
   lastNotifiedSha: string | null;
   /** Outcome at the last notification, so the same (sha, outcome) doesn't refire. */
   lastNotifiedOutcome: Exclude<PrChecksOverall, 'pending' | 'none'> | null;
+  /** After a local push, ignore stale old-SHA check data while GitHub catches up. */
+  postPushRefreshUntil: number | null;
 }
 
 let win: BrowserWindow | null = null;
@@ -114,6 +117,7 @@ export function startPrChecksWatcher(args: {
         lastRefreshedAt: 0,
         lastNotifiedSha: null,
         lastNotifiedOutcome: null,
+        postPushRefreshUntil: null,
       }
     : { ...existing, taskName: args.taskName };
   tasks.set(args.taskId, next);
@@ -126,6 +130,21 @@ export function startPrChecksWatcher(args: {
 export function stopPrChecksWatcher(taskId: string): void {
   tasks.delete(taskId);
   if (tasks.size === 0) clearTickInterval();
+}
+
+export function refreshPrChecksWatcher(taskId: string): void {
+  if (disabled) return;
+  const entry = tasks.get(taskId);
+  if (!entry) return;
+  entry.postPushRefreshUntil = Date.now() + POST_PUSH_REFRESH_GRACE_MS;
+  entry.overall = 'pending';
+  entry.passing = 0;
+  entry.pending = Math.max(1, entry.checks.length);
+  entry.failing = 0;
+  entry.checks = [];
+  entry.lastRefreshedAt = Date.now();
+  sendUpdate(entry);
+  ensureInterval();
 }
 
 /** True if the window currently exists and is visible. */
@@ -209,6 +228,12 @@ async function refreshOne(taskId: string): Promise<void> {
   const prevSha = entry.headRefOid;
   const shaChanged = prevSha !== null && prevSha !== view.headRefOid;
   const firstRefresh = entry.lastRefreshedAt === 0;
+  const waitingForPostPushHead =
+    entry.postPushRefreshUntil !== null && !shaChanged && Date.now() < entry.postPushRefreshUntil;
+  if (waitingForPostPushHead) {
+    entry.lastRefreshedAt = Date.now();
+    return;
+  }
   const nothingChanged =
     !firstRefresh &&
     entry.overall === overall &&
@@ -221,6 +246,9 @@ async function refreshOne(taskId: string): Promise<void> {
   if (shaChanged) {
     entry.lastNotifiedSha = null;
     entry.lastNotifiedOutcome = null;
+    entry.postPushRefreshUntil = null;
+  } else if (entry.postPushRefreshUntil !== null && Date.now() >= entry.postPushRefreshUntil) {
+    entry.postPushRefreshUntil = null;
   }
 
   entry.overall = overall;
@@ -356,16 +384,37 @@ export async function detectPrUrlForBranch(
   worktreePath: string,
   branchName: string,
 ): Promise<string | null> {
+  const { stdout: headStdout } = await exec('git', ['rev-parse', branchName], {
+    cwd: worktreePath,
+    timeout: GH_TIMEOUT_MS,
+    maxBuffer: GH_MAX_BUFFER,
+  });
+  const localHead = headStdout.trim();
   const { stdout } = await exec(
     'gh',
-    ['pr', 'list', '--state', 'open', '--head', branchName, '--json', 'url', '--limit', '1'],
+    [
+      'pr',
+      'list',
+      '--state',
+      'open',
+      '--head',
+      branchName,
+      '--json',
+      'url,headRefName,headRefOid',
+      '--limit',
+      '20',
+    ],
     { cwd: worktreePath, timeout: GH_TIMEOUT_MS, maxBuffer: GH_MAX_BUFFER },
   );
   const parsed: unknown = JSON.parse(stdout);
   if (!Array.isArray(parsed)) return null;
-  const first = parsed[0];
-  if (!first || typeof first !== 'object') return null;
-  const url = (first as Record<string, unknown>)['url'];
+  const match = parsed.find((item) => {
+    if (!item || typeof item !== 'object') return false;
+    const pr = item as Record<string, unknown>;
+    return pr['headRefName'] === branchName && pr['headRefOid'] === localHead;
+  });
+  if (!match || typeof match !== 'object') return null;
+  const url = (match as Record<string, unknown>)['url'];
   return typeof url === 'string' && isPrUrl(url) ? url : null;
 }
 
