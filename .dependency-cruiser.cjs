@@ -10,8 +10,10 @@ module.exports = {
       from: { path: '^src/' },
       to: {
         path: '^electron/',
-        // Allow importing the shared IPC channel enum (channels.ts is a pure enum, no Node/Electron deps)
-        pathNot: '^electron/ipc/channels\\.ts',
+        // Allow importing pure shared modules with no Node/Electron deps:
+        //   - electron/ipc/channels.ts — IPC channel enum
+        //   - electron/mcp/prompt-detect.ts — regex-only prompt detector reused by the renderer task-status pipeline
+        pathNot: ['^electron/ipc/channels\\.ts', '^electron/mcp/prompt-detect\\.ts'],
       },
     },
     {

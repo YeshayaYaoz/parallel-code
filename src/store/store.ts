@@ -4,7 +4,6 @@ export {
   getProject,
   addProject,
   removeProject,
-  removeProjectWithTasks,
   updateProject,
   getProjectPath,
   getProjectBranchPrefix,
@@ -15,6 +14,7 @@ export {
   projectIsGitRepo,
   PASTEL_HUES,
 } from './projects';
+export { removeProjectWithTasks } from './project-cleanup';
 export {
   loadAgents,
   addAgentToTask,

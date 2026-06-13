@@ -3,22 +3,32 @@ import { store, setStore } from './core';
 import { setActiveTask } from './navigation';
 import { computeSidebarTaskOrder } from './sidebar-order';
 import { uncollapseTask } from './tasks';
+import {
+  AI_TERMINAL_PANEL,
+  aiTerminalPanels,
+  defaultPanelFor,
+  getTaskFocusedPanel,
+  isAiTerminalPanel,
+  setTaskFocusedPanel,
+  triggerFocus,
+} from './focused-panel';
 
-// Imperative focus registry: components register focus callbacks on mount
-const focusRegistry = new Map<string, () => void>();
+// Re-export panel/focus-registry helpers from their new home so existing
+// importers of './focus' keep working without a cycle through focused-panel.
+export {
+  AI_TERMINAL_PANEL,
+  aiTerminalPanels,
+  defaultPanelFor,
+  getTaskFocusedPanel,
+  isAiTerminalPanel,
+  registerFocusFn,
+  setTaskFocusedPanel,
+  triggerFocus,
+  unregisterFocusFn,
+} from './focused-panel';
+export { isPanelFocused, isPanelFocusedPrefix } from './focused-panel';
+
 const actionRegistry = new Map<string, () => void>();
-
-export function registerFocusFn(key: string, fn: () => void): void {
-  focusRegistry.set(key, fn);
-}
-
-export function unregisterFocusFn(key: string): void {
-  focusRegistry.delete(key);
-}
-
-export function triggerFocus(key: string): void {
-  focusRegistry.get(key)?.();
-}
 
 export function registerAction(key: string, fn: () => void): void {
   actionRegistry.set(key, fn);
@@ -38,27 +48,8 @@ export function triggerAction(key: string): void {
 //    left, changed-files/notes/steps/shell anchor the right, and AI panes are
 //    repeated down the left columns so left/right crossings stay consistent.
 
-const AI_TERMINAL_PANEL = 'ai-terminal';
 const SHELL_PANEL_PREFIX = 'shell:';
 const SHELL_TOOLBAR_PANEL_PREFIX = 'shell-toolbar:';
-
-function aiTerminalPanelId(agentId: string): string {
-  return `${AI_TERMINAL_PANEL}:${agentId}`;
-}
-
-function isAiTerminalPanel(panel: string): boolean {
-  return panel === AI_TERMINAL_PANEL || panel.startsWith(`${AI_TERMINAL_PANEL}:`);
-}
-
-function agentIdFromAiTerminalPanel(panel: string): string | null {
-  return panel.startsWith(`${AI_TERMINAL_PANEL}:`)
-    ? panel.slice(AI_TERMINAL_PANEL.length + 1)
-    : null;
-}
-
-function aiTerminalPanels(task: { agentIds: string[] }): string[] {
-  return task.agentIds.length > 0 ? task.agentIds.map(aiTerminalPanelId) : [AI_TERMINAL_PANEL];
-}
 
 function shellToolbarPanels(task: { projectId: string }): string[] {
   const bookmarkCount =
@@ -100,16 +91,6 @@ function pickTargetTerminalFamilyPanel(
   }
 
   return null;
-}
-
-function normalizeTaskPanel(taskId: string, panel: string): string {
-  if (panel !== AI_TERMINAL_PANEL) return panel;
-  const task = store.tasks[taskId];
-  if (!task) return panel;
-  const activeAgentId = store.activeAgentId;
-  const agentId =
-    activeAgentId && task.agentIds.includes(activeAgentId) ? activeAgentId : task.agentIds[0];
-  return agentId ? aiTerminalPanelId(agentId) : panel;
 }
 
 /** Cells that belong to the left column in split mode. */
@@ -178,12 +159,6 @@ function pickTopRightColumnTarget(grid: string[][]): string | null {
   return null;
 }
 
-/** The panel to focus when navigating into a task or terminal. */
-function defaultPanelFor(panelId: string): string {
-  const task = store.tasks[panelId];
-  return task ? aiTerminalPanels(task)[0] : 'terminal';
-}
-
 interface GridPos {
   row: number;
   col: number;
@@ -195,48 +170,6 @@ function findInGrid(grid: string[][], cell: string): GridPos | null {
     if (col !== -1) return { row, col };
   }
   return null;
-}
-
-export function getTaskFocusedPanel(taskId: string): string {
-  return normalizeTaskPanel(taskId, store.focusedPanel[taskId] ?? defaultPanelFor(taskId));
-}
-
-/**
- * Whether a panel within a task should render its focus border. Returns false
- * when focus has moved to the sidebar/placeholder, even though the previously
- * focused panel is still recorded in `focusedPanel[taskId]`.
- */
-export function isPanelFocused(taskId: string, panel: string): boolean {
-  if (store.sidebarFocused || store.placeholderFocused) return false;
-  if (store.activeTaskId !== taskId) return false;
-  return store.focusedPanel[taskId] === panel;
-}
-
-export function isPanelFocusedPrefix(taskId: string, prefix: string): boolean {
-  if (store.sidebarFocused || store.placeholderFocused) return false;
-  if (store.activeTaskId !== taskId) return false;
-  return store.focusedPanel[taskId]?.startsWith(prefix) ?? false;
-}
-
-export function setTaskFocusedPanel(taskId: string, panel: string): void {
-  const normalizedPanel = normalizeTaskPanel(taskId, panel);
-  setStore('focusedPanel', taskId, normalizedPanel);
-  const agentId = agentIdFromAiTerminalPanel(normalizedPanel);
-  if (agentId && store.tasks[taskId]?.agentIds.includes(agentId)) {
-    setStore('activeAgentId', agentId);
-    setStore('tasks', taskId, 'selectedAgentId', agentId);
-  }
-  setStore('sidebarFocused', false);
-  setStore('placeholderFocused', false);
-  triggerFocus(`${taskId}:${normalizedPanel}`);
-  scrollTaskIntoView(taskId);
-}
-
-function scrollTaskIntoView(taskId: string): void {
-  requestAnimationFrame(() => {
-    const el = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`);
-    el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-  });
 }
 
 export function focusSidebar(): void {

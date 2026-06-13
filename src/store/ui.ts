@@ -2,7 +2,7 @@ import { batch } from 'solid-js';
 import { produce } from 'solid-js/store';
 import { store, setStore } from './core';
 import { setActiveTask } from './navigation';
-import { setTaskFocusedPanel } from './focus';
+import { setTaskFocusedPanel } from './focused-panel';
 import type { LookPreset, AppearanceMode } from '../lib/look';
 import { osIsDark } from '../lib/os-appearance';
 import type { CustomTheme } from '../lib/custom-theme';

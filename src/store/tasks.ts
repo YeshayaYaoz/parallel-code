@@ -4,7 +4,7 @@ import { IPC } from '../../electron/ipc/channels';
 import { store, setStore, cleanupPanelEntries } from './core';
 import { effectiveAgentId } from './agent-select';
 import { saveState } from './persistence';
-import { setTaskFocusedPanel } from './focus';
+import { setTaskFocusedPanel } from './focused-panel';
 import { getProject, getProjectPath, getProjectBranchPrefix, isProjectMissing } from './projects';
 import { setPendingShellCommand } from '../lib/bookmarks';
 import {

@@ -1,5 +1,5 @@
 import { store, setStore } from './core';
-import { getTaskFocusedPanel, setTaskFocusedPanel } from './focus';
+import { getTaskFocusedPanel, setTaskFocusedPanel } from './focused-panel';
 import { showNotification } from './notification';
 import { pickAndAddProject } from './projects';
 import { reorderTask } from './tasks';

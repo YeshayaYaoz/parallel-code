@@ -69,7 +69,7 @@ vi.mock('./navigation', () => ({
   setActiveTask: mocks.setActiveTask,
 }));
 
-vi.mock('./focus', () => ({
+vi.mock('./focused-panel', () => ({
   setTaskFocusedPanel: mocks.setTaskFocusedPanel,
 }));
 

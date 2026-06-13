@@ -4,7 +4,7 @@ import { IPC } from '../../electron/ipc/channels';
 import { store, setStore, cleanupPanelEntries } from './core';
 import { effectiveAgentId } from './agent-select';
 import { clearAgentActivity } from './taskStatus';
-import { triggerFocus, getTaskFocusedPanel } from './focus';
+import { triggerFocus, getTaskFocusedPanel } from './focused-panel';
 import type { Terminal } from './types';
 import { warn as logWarn } from '../lib/log';
 
