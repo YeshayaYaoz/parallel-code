@@ -589,9 +589,9 @@ export async function mergeTask(
     message: options?.message,
     cleanup,
   });
-  recordMergedLines(mergeResult.lines_added, mergeResult.lines_removed);
 
   if (cleanup) {
+    recordMergedLines(mergeResult.lines_added, mergeResult.lines_removed);
     recordTaskMerged();
     await Promise.allSettled(
       [...agentIds, ...shellAgentIds].map((id) => invoke(IPC.KillAgent, { agentId: id })),

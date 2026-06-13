@@ -152,7 +152,7 @@ import {
   updateTaskBranch,
 } from './tasks';
 import { getCoordinatorChildren } from './sidebar-order';
-import { recordTaskMerged } from './completion';
+import { recordMergedLines, recordTaskMerged } from './completion';
 import { markAgentSpawned, rescheduleTaskStatusPolling } from './taskStatus';
 import { saveState } from './persistence';
 import { getProjectBranchPrefix, getProjectPath, isProjectMissing } from './projects';
@@ -1116,9 +1116,11 @@ describe('recordTaskMerged counts merges with cleanup, not closures', () => {
     await mergeTask('task-1', { cleanup: true });
 
     expect(recordTaskMerged).toHaveBeenCalledTimes(1);
+    expect(recordMergedLines).toHaveBeenCalledTimes(1);
+    expect(recordMergedLines).toHaveBeenCalledWith(10, 2);
   });
 
-  it('merging without cleanup does NOT increment the counter', async () => {
+  it('merging without cleanup does NOT increment the counter or lines totals', async () => {
     mockTasks['task-1'] = {
       agentIds: [],
       shellAgentIds: [],
@@ -1138,6 +1140,7 @@ describe('recordTaskMerged counts merges with cleanup, not closures', () => {
     await mergeTask('task-1', { cleanup: false });
 
     expect(recordTaskMerged).not.toHaveBeenCalled();
+    expect(recordMergedLines).not.toHaveBeenCalled();
   });
 });
 
