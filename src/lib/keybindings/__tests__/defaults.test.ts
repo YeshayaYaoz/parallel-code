@@ -34,6 +34,7 @@ const TERMINAL_LAYER_IDS = [
   'term.copy-linux',
   'term.paste',
   'term.paste-linux',
+  'term.find',
   'term.shift-enter',
   'term.home',
   'term.end',

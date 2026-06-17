@@ -419,6 +419,20 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   },
 
   // -------------------------------------------------------------------------
+  // Terminal layer — Search
+  // -------------------------------------------------------------------------
+  {
+    id: 'term.find',
+    layer: 'terminal',
+    category: 'Search',
+    description: 'Find in terminal',
+    platform: 'both',
+    key: 'f',
+    modifiers: { cmdOrCtrl: true },
+    action: 'find',
+  },
+
+  // -------------------------------------------------------------------------
   // Terminal layer — Special keys
   // -------------------------------------------------------------------------
   {

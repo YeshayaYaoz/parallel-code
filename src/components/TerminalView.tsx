@@ -1,8 +1,10 @@
-import { onMount, onCleanup, createEffect, Show } from 'solid-js';
+import { onMount, onCleanup, createEffect, createSignal, Show } from 'solid-js';
 import { Terminal, type IMarker } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SearchAddon } from '@xterm/addon-search';
+import { TerminalSearchOverlay } from './TerminalSearchOverlay';
 import { invoke, fireAndForget, Channel } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { getTerminalFontFamily } from '../lib/fonts';
@@ -110,6 +112,65 @@ export function TerminalView(props: TerminalViewProps) {
   let term: Terminal | undefined;
   let fitAddon: FitAddon | undefined;
   let webglAddon: WebglAddon | undefined;
+  let searchAddon: SearchAddon | undefined;
+  let searchInputRef: HTMLInputElement | undefined;
+  const [searchOpen, setSearchOpen] = createSignal(false);
+  const [searchQuery, setSearchQuery] = createSignal('');
+  const [searchResultIndex, setSearchResultIndex] = createSignal(-1);
+  const [searchResultCount, setSearchResultCount] = createSignal(0);
+
+  // Browser-style find: amber highlight for all matches, orange for the active
+  // one. Overview-ruler colors must be solid; match backgrounds carry alpha so
+  // the underlying glyphs stay legible regardless of theme.
+  const SEARCH_DECORATIONS = {
+    matchBackground: 'rgba(255, 213, 79, 0.4)',
+    matchOverviewRuler: '#ffd54f',
+    activeMatchBackground: 'rgba(255, 138, 0, 0.85)',
+    activeMatchColorOverviewRuler: '#ff8a00',
+  } as const;
+
+  function runSearch(direction: 'next' | 'prev', incremental = false) {
+    if (!searchAddon) return;
+    const q = searchQuery();
+    if (!q) {
+      searchAddon.clearDecorations();
+      setSearchResultIndex(-1);
+      setSearchResultCount(0);
+      return;
+    }
+    const opts = { incremental, decorations: SEARCH_DECORATIONS };
+    if (direction === 'prev') searchAddon.findPrevious(q, opts);
+    else searchAddon.findNext(q, opts);
+  }
+
+  function onSearchInput(value: string) {
+    setSearchQuery(value);
+    // incremental keeps the current match if it still matches, so the viewport
+    // doesn't jump ahead on every keystroke (browser find-as-you-type feel).
+    runSearch('next', true);
+  }
+
+  function openSearch() {
+    if (!term) return;
+    if (searchOpen()) {
+      searchInputRef?.focus();
+      searchInputRef?.select();
+      return;
+    }
+    // Seed from a single-line selection, like a browser's Find does.
+    const sel = term.getSelection();
+    if (sel && !sel.includes('\n') && sel.length <= 200) setSearchQuery(sel);
+    setSearchOpen(true);
+    if (searchQuery()) runSearch('next');
+  }
+
+  function closeSearch() {
+    setSearchOpen(false);
+    searchAddon?.clearDecorations();
+    setSearchResultIndex(-1);
+    setSearchResultCount(0);
+    term?.focus();
+  }
 
   function activeTerminalTheme() {
     const id = store.activeCustomThemeId;
@@ -154,6 +215,14 @@ export function TerminalView(props: TerminalViewProps) {
     fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon(openTerminalHttpLinkWithModifier));
+
+    searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+    // Keep the find-bar counter in sync with xterm's match results.
+    searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
+      setSearchResultIndex(resultIndex);
+      setSearchResultCount(resultCount);
+    });
 
     term.open(containerRef);
 
@@ -258,6 +327,7 @@ export function TerminalView(props: TerminalViewProps) {
       return lines.join('\n');
     });
 
+    // eslint-disable-next-line solid/reactivity -- key handler reads current signal/binding values intentionally on each keypress
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== 'keydown') {
         // Suppress Shift+Enter keyup so xterm doesn't echo a bare Enter
@@ -309,6 +379,11 @@ export function TerminalView(props: TerminalViewProps) {
           })().catch((err: unknown) => {
             logWarn('terminal.paste', 'paste handler failed', { err });
           });
+          return false;
+        }
+
+        if (binding.action === 'find') {
+          openSearch();
           return false;
         }
 
@@ -802,6 +877,18 @@ export function TerminalView(props: TerminalViewProps) {
           contain: 'strict',
         }}
       />
+      <Show when={searchOpen()}>
+        <TerminalSearchOverlay
+          query={searchQuery()}
+          resultIndex={searchResultIndex()}
+          resultCount={searchResultCount()}
+          onInput={onSearchInput}
+          onNext={() => runSearch('next')}
+          onPrev={() => runSearch('prev')}
+          onClose={closeSearch}
+          setInputRef={(el) => (searchInputRef = el)}
+        />
+      </Show>
       <Show when={mcpStatus() === 'error'}>
         <div
           style={{
