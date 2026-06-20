@@ -103,9 +103,6 @@ export interface Task {
   shellAgentIds: string[];
   notes: string;
   lastPrompt: string;
-  /** Agent the most recent prompt was sent to. Transient (not persisted) — used to
-   *  scope the terminal "scroll to last prompt" marker/jump to the right pane. */
-  lastPromptAgentId?: string;
   promptedAgentIds?: string[];
   initialPrompt?: string; // auto-sends when agent is ready
   savedInitialPrompt?: string;

@@ -1,10 +1,11 @@
-import { onMount, onCleanup, createEffect, createSignal, on, Show } from 'solid-js';
+import { onMount, onCleanup, createEffect, createMemo, createSignal, Show } from 'solid-js';
 import { Terminal, type IMarker } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { TerminalSearchOverlay } from './TerminalSearchOverlay';
+import { TerminalBookmarkGutter } from './TerminalBookmarks';
 import { invoke, fireAndForget, Channel } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { getTerminalFontFamily } from '../lib/fonts';
@@ -51,6 +52,61 @@ type ClipboardPaste =
   | { kind: 'text'; text: string }
   | { kind: 'empty' };
 
+/** A scroll bookmark: an xterm marker anchored to a line, plus a text preview.
+ *  Markers are owned by xterm and freed when term.dispose() runs. */
+interface ScrollBookmark {
+  id: number;
+  marker: IMarker;
+  preview: string;
+}
+
+/** Per-frame placement for the bookmark gutter. `tops` maps a bookmark id to its
+ *  vertical px (visible bookmarks sit on their line; off-screen ones fan at an
+ *  edge). Bookmarks beyond the fan cap aren't in `tops` and are summarized by the
+ *  above/below overflow counts; the "+N" badge jumps to the nearest hidden one. */
+interface BookmarkLayout {
+  tops: Map<number, number>;
+  aboveCount: number;
+  aboveTop: number;
+  aboveNextId: number | null;
+  belowCount: number;
+  belowTop: number;
+  belowNextId: number | null;
+}
+
+/** Shared "nothing to draw" layout, returned by reference so the memo stays
+ *  referentially stable (no allocation, no downstream churn) while a pane streams
+ *  with no bookmarks — the common case. Its `tops` map is never mutated. */
+const EMPTY_BOOKMARK_LAYOUT: BookmarkLayout = {
+  tops: new Map(),
+  aboveCount: 0,
+  aboveTop: 0,
+  aboveNextId: null,
+  belowCount: 0,
+  belowTop: 0,
+  belowNextId: null,
+};
+
+// Reserved left-strip width. The terminal is inset by this so dots/buttons never
+// overlap terminal text.
+const BOOKMARK_GUTTER_WIDTH = 24;
+// Height of the "bookmark selection" button; used to clamp it inside the gutter.
+const CREATE_BUTTON_HEIGHT = 22;
+// Matches the container's padding-top — bookmark/button vertical math is relative to it.
+const TERMINAL_PADDING_TOP = 4;
+// Bookmark-icon box size (mirrors the button in TerminalBookmarks).
+const BOOKMARK_ICON_SIZE = 20;
+// Off-screen bookmarks fan out at each gutter edge: up to FAN_MAX icons spaced
+// FAN_OFFSET px apart, then a "+N" badge for the rest. EDGE_PAD keeps the first
+// icon clear of the very edge.
+const BOOKMARK_FAN_MAX = 3;
+const BOOKMARK_FAN_OFFSET = 16;
+const BOOKMARK_EDGE_PAD = 3;
+// C0/C1 control bytes + DEL — stripped from bookmark previews so raw terminal
+// output can't garble the tooltip label.
+// eslint-disable-next-line no-control-regex -- intentionally matching control chars
+const CONTROL_CHARS = /[\x00-\x1f\x7f-\x9f]/g;
+
 interface TerminalViewProps {
   taskId: string;
   agentId: string;
@@ -76,15 +132,12 @@ interface TerminalViewProps {
   onFileLink?: (filePath: string) => void;
   onReady?: (focusFn: () => void) => void;
   onBufferReady?: (getBuffer: () => string) => void;
-  /** Exposes terminal-bookmark API: `mark(i)` registers a marker at the current line
-   *  for step index `i`; `jump(i)` scrolls the viewport so that marker is visible;
-   *  `jumpToPrompt()` scrolls to the line where the most recent user prompt landed.
+  /** Exposes step-bookmark API: `mark(i)` registers a marker at the current line for
+   *  step index `i`; `jump(i)` scrolls the viewport so that marker is visible.
    *  Called with `undefined` on unmount so the consumer can reset its state — important
    *  on agent restart, where this component remounts but the parent does not. */
   onStepNavReady?: (
-    api:
-      | { mark: (i: number) => void; jump: (i: number) => boolean; jumpToPrompt: () => boolean }
-      | undefined,
+    api: { mark: (i: number) => void; jump: (i: number) => boolean } | undefined,
   ) => void;
   fontSize?: number;
   autoFocus?: boolean;
@@ -135,6 +188,152 @@ export function TerminalView(props: TerminalViewProps) {
   const [searchResult, setSearchResult] = createSignal({ index: -1, count: 0 });
 
   const resetSearchResults = () => setSearchResult({ index: -1, count: 0 });
+
+  // Scroll bookmarks — the user selects terminal text and pins it; each pin is an
+  // xterm marker anchored to that line. Its icon sits next to the line and scrolls
+  // with the content; once the line scrolls out of view the icon fans at the top
+  // or bottom edge. Session-only, like step bookmarks; markers are owned by xterm
+  // and freed on term.dispose().
+  const [bookmarks, setBookmarks] = createSignal<ScrollBookmark[]>([]);
+  // Bumped whenever the buffer grows or scrolls, so icon positions (derived from
+  // live xterm state, not signals) recompute reactively.
+  const [overviewTick, setOverviewTick] = createSignal(0);
+  const [selectionActive, setSelectionActive] = createSignal(false);
+  let nextBookmarkId = 1;
+
+  // Cell/container geometry, cached so the per-frame layout never reads the DOM.
+  // Cell height is font-derived (constant until a resize/font change); both are
+  // re-measured lazily after the first render and invalidated on resize.
+  let screenEl: HTMLElement | undefined;
+  let cellHeightPx = 0;
+  let containerHeightPx = 0;
+  function measureGutterMetrics() {
+    if (term && screenEl && term.rows > 0) cellHeightPx = screenEl.clientHeight / term.rows;
+    if (containerRef) containerHeightPx = containerRef.clientHeight;
+  }
+
+  // Lays out every bookmark for the current scroll position. Recomputed once per
+  // tick (createMemo dedupes the multiple reads in JSX). Bookmarks on screen sit
+  // on their line; off-screen ones fan at the nearest edge up to the cap.
+  const bookmarkLayout = createMemo<BookmarkLayout>(() => {
+    overviewTick();
+    const bs = bookmarks();
+    // Nothing to draw while a full-screen TUI owns the screen (markers point at
+    // normal-buffer lines that aren't visible) or when there are no bookmarks.
+    if (!term || term.buffer.active.type !== 'normal' || bs.length === 0) {
+      return EMPTY_BOOKMARK_LAYOUT;
+    }
+    const tops = new Map<number, number>();
+    const viewportY = term.buffer.active.viewportY;
+    const rows = term.rows;
+    const cell = cellHeightPx || 17;
+    const bottom = containerHeightPx || rows * cell + TERMINAL_PADDING_TOP;
+    const above: ScrollBookmark[] = [];
+    const below: ScrollBookmark[] = [];
+    for (const b of bs) {
+      if (b.marker.isDisposed) continue;
+      const row = b.marker.line - viewportY;
+      if (row < 0) above.push(b);
+      else if (row >= rows) below.push(b);
+      else tops.set(b.id, TERMINAL_PADDING_TOP + row * cell + cell / 2);
+    }
+    // Fan off-screen icons nearest-to-viewport first (so the one about to scroll
+    // back in sits closest to the edge).
+    above.sort((a, b) => b.marker.line - a.marker.line);
+    for (let i = 0; i < above.length && i < BOOKMARK_FAN_MAX; i++) {
+      tops.set(above[i].id, BOOKMARK_EDGE_PAD + BOOKMARK_ICON_SIZE / 2 + i * BOOKMARK_FAN_OFFSET);
+    }
+    below.sort((a, b) => a.marker.line - b.marker.line);
+    for (let i = 0; i < below.length && i < BOOKMARK_FAN_MAX; i++) {
+      tops.set(
+        below[i].id,
+        bottom - BOOKMARK_EDGE_PAD - BOOKMARK_ICON_SIZE / 2 - i * BOOKMARK_FAN_OFFSET,
+      );
+    }
+    const aboveCount = above.length - BOOKMARK_FAN_MAX;
+    const belowCount = below.length - BOOKMARK_FAN_MAX;
+    return {
+      tops,
+      aboveCount: Math.max(0, aboveCount),
+      aboveTop: BOOKMARK_EDGE_PAD + BOOKMARK_ICON_SIZE / 2 + BOOKMARK_FAN_MAX * BOOKMARK_FAN_OFFSET,
+      aboveNextId: aboveCount > 0 ? above[BOOKMARK_FAN_MAX].id : null,
+      belowCount: Math.max(0, belowCount),
+      belowTop:
+        bottom -
+        BOOKMARK_EDGE_PAD -
+        BOOKMARK_ICON_SIZE / 2 -
+        BOOKMARK_FAN_MAX * BOOKMARK_FAN_OFFSET,
+      belowNextId: belowCount > 0 ? below[BOOKMARK_FAN_MAX].id : null,
+    };
+  });
+
+  // px top for a bookmark icon, or null when it's folded into an overflow badge.
+  const bookmarkTopPx = (id: number): number | null => bookmarkLayout().tops.get(id) ?? null;
+
+  function addBookmarkFromSelection() {
+    if (!term) return;
+    // Only the normal buffer has scrollback worth bookmarking; a marker made on
+    // the alternate buffer is silently cleared when the TUI exits.
+    if (term.buffer.active.type !== 'normal') return;
+    const range = term.getSelectionPosition();
+    if (!range) return;
+    const buf = term.buffer.active;
+    // Selection y is a 0-based absolute buffer row (despite the d.ts "1-based"
+    // note — getSelectionPosition returns raw model coords). Anchor the marker
+    // to the selection's top line; registerMarker takes a cursor-relative offset.
+    const line0 = range.start.y;
+    const marker = term.registerMarker(line0 - buf.baseY - buf.cursorY);
+    if (!marker) return;
+    const firstLine = term.getSelection().split('\n')[0]?.replace(CONTROL_CHARS, '').trim() ?? '';
+    const preview = firstLine.slice(0, 120) || `Line ${line0 + 1}`;
+    setBookmarks((bs) => [...bs, { id: nextBookmarkId++, marker, preview }]);
+    term.clearSelection();
+    setSelectionActive(false);
+  }
+
+  function removeBookmark(id: number) {
+    const b = bookmarks().find((x) => x.id === id);
+    if (!b) return;
+    b.marker.dispose();
+    setBookmarks((bs) => bs.filter((x) => x.id !== id));
+  }
+
+  function jumpToBookmark(id: number) {
+    if (!term) return;
+    const b = bookmarks().find((x) => x.id === id);
+    if (!b) return;
+    // A marker scrolled past the scrollback limit is disposed — drop it instead.
+    if (b.marker.isDisposed) {
+      removeBookmark(id);
+      return;
+    }
+    term.scrollToLine(b.marker.line);
+  }
+
+  // The "+N" badges jump to the nearest hidden bookmark in that direction, so
+  // repeated clicks walk through the off-screen ones as they scroll into the fan.
+  const jumpAboveOverflow = () => {
+    const id = bookmarkLayout().aboveNextId;
+    if (id !== null) jumpToBookmark(id);
+  };
+  const jumpBelowOverflow = () => {
+    const id = bookmarkLayout().belowNextId;
+    if (id !== null) jumpToBookmark(id);
+  };
+
+  // Vertical position (px from gutter top) for the "bookmark selection" button,
+  // aligned to the selection's top line and clamped to the visible area.
+  function selectionButtonTop(): number {
+    overviewTick();
+    if (!term) return 0;
+    const range = term.getSelectionPosition();
+    if (!range) return 0;
+    const cell = cellHeightPx || 17;
+    const viewportRow = range.start.y - term.buffer.active.viewportY;
+    const top = TERMINAL_PADDING_TOP + viewportRow * cell;
+    const maxTop = (containerHeightPx || containerRef?.clientHeight || 0) - CREATE_BUTTON_HEIGHT;
+    return Math.min(Math.max(top, 2), Math.max(2, maxTop));
+  }
 
   // The find addon is loaded lazily on first use: most terminals are never
   // searched, and an idle addon keeps a per-write listener alive on every pane.
@@ -235,6 +434,8 @@ export function TerminalView(props: TerminalViewProps) {
     term.loadAddon(new WebLinksAddon(openTerminalHttpLinkWithModifier));
 
     term.open(containerRef);
+    // The screen element is created by open(); cache it for cell-height measurement.
+    screenEl = (term.element?.querySelector('.xterm-screen') as HTMLElement | null) ?? undefined;
 
     // Block direct PTY keyboard input only after self-landing has removed the
     // backend PTY. Coordinator automation now waits for user activity instead of
@@ -307,10 +508,6 @@ export function TerminalView(props: TerminalViewProps) {
     // limit xterm disposes it, in which case `jump` returns false so the caller can no-op.
     // The map is owned by xterm and freed implicitly when term.dispose() runs in onCleanup.
     const stepMarkers = new Map<number, IMarker>();
-    // Anchor the line where the most recent user prompt landed so the info-bar
-    // prompt row can scroll back to it. Both direct terminal typing and the
-    // input box funnel through the task's lastPrompt, so one watch covers both.
-    let lastPromptMarker: IMarker | undefined;
     const stepNavApi = {
       mark(i: number) {
         if (!term || stepMarkers.has(i)) return;
@@ -324,36 +521,65 @@ export function TerminalView(props: TerminalViewProps) {
         term.scrollToLine(m.line);
         return true;
       },
-      jumpToPrompt(): boolean {
-        if (!term || !lastPromptMarker || lastPromptMarker.isDisposed) return false;
-        term.scrollToLine(lastPromptMarker.line);
-        return true;
-      },
     };
     props.onStepNavReady?.(stepNavApi);
     onCleanup(() => props.onStepNavReady?.(undefined));
 
-    // Re-anchor on each new prompt sent to THIS agent. Deferred: a prompt set
-    // before this mount has no known on-screen position (same reason historical
-    // steps aren't jumpable). The agent gate keeps other panes in a multi-agent
-    // task from anchoring a marker at an unrelated line.
-    //
-    // Timing note: on the input-box path lastPrompt is set just before the echo
-    // renders (output is RAF-batched), so the marker can land a line or two above
-    // where the prompt visually appears. scrollToLine puts it near the top of the
-    // viewport, so the prompt is still on screen — close enough to orient.
-    createEffect(
-      on(
-        () => store.tasks[taskId]?.lastPrompt,
-        (prompt) => {
-          if (!term || !prompt) return;
-          if (store.tasks[taskId]?.lastPromptAgentId !== agentId) return;
-          lastPromptMarker?.dispose();
-          lastPromptMarker = term.registerMarker(0) ?? undefined;
-        },
-        { defer: true },
-      ),
-    );
+    // Scroll-bookmark overview: keep bookmark icon positions in sync with the
+    // buffer. onRender fires per visual frame (on new output and on scroll), but
+    // we only bump the tick when the buffer length or scroll position actually
+    // changed, so streaming output doesn't churn reactivity needlessly. These
+    // listeners are owned by xterm and torn down by term.dispose() in onCleanup.
+    let lastBufLength = -1;
+    let lastViewportY = -1;
+    let lastBufferType: 'normal' | 'alternate' | undefined;
+    const syncOverview = () => {
+      if (!term) return;
+      // (Re)measure geometry once it's been invalidated (initial mount or resize);
+      // the renderer has laid the screen out by the time onRender fires. Do this
+      // before the early-return: a resize often leaves length/viewportY unchanged,
+      // and we still need fresh geometry + a recompute.
+      const needMeasure = cellHeightPx === 0 || containerHeightPx === 0;
+      if (needMeasure) {
+        measureGutterMetrics();
+        // Pane isn't laid out yet (e.g. hidden) — nothing to position; retry on
+        // the next render rather than bumping the tick every frame.
+        if (cellHeightPx === 0) return;
+      }
+      const buf = term.buffer.active;
+      // Include buffer.type: an alt↔normal switch (TUI enter/exit) can leave
+      // length/viewportY unchanged yet must flip the gutter between hidden/shown.
+      if (
+        !needMeasure &&
+        buf.type === lastBufferType &&
+        buf.length === lastBufLength &&
+        buf.viewportY === lastViewportY
+      )
+        return;
+      lastBufferType = buf.type;
+      lastBufLength = buf.length;
+      lastViewportY = buf.viewportY;
+      setOverviewTick((t) => t + 1);
+      // Drop bookmarks whose line scrolled past the scrollback limit. Check before
+      // allocating so the common (no bookmark / none disposed) path stays free —
+      // this runs every frame, on every streaming pane.
+      const bs = bookmarks();
+      if (bs.length && bs.some((b) => b.marker.isDisposed)) {
+        setBookmarks(bs.filter((b) => !b.marker.isDisposed));
+      }
+    };
+    // onRender covers content growth + most scrolls; onScroll guarantees the
+    // viewport-relative icon positions update on every scroll path. The guard in
+    // syncOverview dedupes the overlap.
+    term.onRender(syncOverview);
+    term.onScroll(syncOverview);
+    term.onSelectionChange(() => {
+      // Only offer to bookmark selections in the normal buffer — a marker on the
+      // alternate buffer (full-screen TUI) is cleared the moment the TUI exits.
+      const has = term?.hasSelection() === true && term.buffer.active.type === 'normal';
+      setSelectionActive(has);
+      if (has) setOverviewTick((t) => t + 1); // refresh the button's position
+    });
 
     props.onBufferReady?.(() => {
       if (!term) return '';
@@ -743,6 +969,10 @@ export function TerminalView(props: TerminalViewProps) {
 
     term.onResize(({ cols, rows }) => {
       pendingResize = { cols, rows };
+      // Invalidate cached geometry — cell height (font-derived) and container
+      // height may both have changed; syncOverview re-measures on the next render.
+      cellHeightPx = 0;
+      containerHeightPx = 0;
       if (resizeFlushTimer !== undefined) return;
       resizeFlushTimer = window.setTimeout(() => {
         resizeFlushTimer = undefined;
@@ -910,11 +1140,28 @@ export function TerminalView(props: TerminalViewProps) {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <TerminalBookmarkGutter
+        width={BOOKMARK_GUTTER_WIDTH}
+        bookmarks={bookmarks()}
+        topOf={bookmarkTopPx}
+        onJump={jumpToBookmark}
+        onRemove={removeBookmark}
+        aboveCount={bookmarkLayout().aboveCount}
+        aboveTop={bookmarkLayout().aboveTop}
+        belowCount={bookmarkLayout().belowCount}
+        belowTop={bookmarkLayout().belowTop}
+        onJumpAbove={jumpAboveOverflow}
+        onJumpBelow={jumpBelowOverflow}
+        createVisible={selectionActive()}
+        createTop={selectionButtonTop()}
+        onCreate={addBookmarkFromSelection}
+      />
       <div
         ref={containerRef}
         style={{
-          width: '100%',
+          width: `calc(100% - ${BOOKMARK_GUTTER_WIDTH}px)`,
           height: '100%',
+          'margin-left': `${BOOKMARK_GUTTER_WIDTH}px`,
           overflow: 'hidden',
           padding: '4px 0 0 4px',
           contain: 'strict',

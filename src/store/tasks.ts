@@ -679,9 +679,6 @@ export async function sendPrompt(taskId: string, agentId: string, text: string):
   );
   await new Promise((r) => setTimeout(r, pasteDelayMs(effectiveText)));
   await writeToAgentWhenReady(taskId, agentId, '\r');
-  // Set the target agent before lastPrompt so the terminal's prompt-marker effect
-  // (which keys off lastPrompt) reads the right agent when it fires.
-  setStore('tasks', taskId, 'lastPromptAgentId', agentId);
   setStore('tasks', taskId, 'lastPrompt', text);
   if (task && !hasPromptedAgent) {
     setStore('tasks', taskId, 'promptedAgentIds', [...promptedAgentIds, agentId]);
@@ -690,10 +687,7 @@ export async function sendPrompt(taskId: string, agentId: string, text: string):
   }
 }
 
-export function setLastPrompt(taskId: string, text: string, agentId?: string): void {
-  // Set the target agent first so the terminal's prompt-marker effect (which keys
-  // off lastPrompt) reads the right agent when it fires.
-  if (agentId) setStore('tasks', taskId, 'lastPromptAgentId', agentId);
+export function setLastPrompt(taskId: string, text: string): void {
   setStore('tasks', taskId, 'lastPrompt', text);
 }
 

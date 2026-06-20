@@ -36,11 +36,7 @@ function aiTerminalPanelId(agentId: string): string {
   return `ai-terminal:${agentId}`;
 }
 
-type StepNavApi = {
-  mark: (i: number) => void;
-  jump: (i: number) => boolean;
-  jumpToPrompt: () => boolean;
-};
+type StepNavApi = { mark: (i: number) => void; jump: (i: number) => boolean };
 
 interface TaskAITerminalProps {
   task: Task;
@@ -189,14 +185,6 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
     syncStepNavSource();
   }
 
-  /** Scroll the terminal of the agent that received the last prompt to where it
-   *  landed. Targets that agent (not the selected one) so the jump matches the
-   *  prompt shown in the bar. No-op when the prompt predates the terminal mount. */
-  function jumpToLastPrompt() {
-    const id = props.task.lastPromptAgentId || props.selectedAgentId || firstAgentId();
-    stepNavByAgent.get(id)?.jumpToPrompt();
-  }
-
   return (
     <>
       <div
@@ -231,33 +219,17 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
               'min-width': '0',
             }}
           >
-            <button
-              type="button"
-              disabled={!props.task.lastPrompt}
-              onClick={(e) => {
-                e.stopPropagation();
-                jumpToLastPrompt();
-              }}
+            <span
               style={{
-                appearance: 'none',
-                background: 'transparent',
-                border: 'none',
-                margin: '0',
-                padding: '0',
-                font: 'inherit',
-                color: 'inherit',
-                'text-align': 'left',
                 opacity: props.task.lastPrompt ? 1 : 0.4,
                 flex: '1',
                 'min-width': '0',
                 overflow: 'hidden',
-                'white-space': 'nowrap',
                 'text-overflow': 'ellipsis',
-                cursor: props.task.lastPrompt ? 'pointer' : 'default',
               }}
             >
               {props.task.lastPrompt ? `> ${props.task.lastPrompt}` : infoBarStatus().text}
-            </button>
+            </span>
             <div
               style={{
                 display: 'flex',
@@ -511,7 +483,9 @@ function AgentTerminalPane(props: {
   onFileLink: (filePath: string) => void;
   onReady: (agentId: string, focusFn: () => void) => void;
   onUnmount: (agentId: string) => void;
-  onStepNavReady?: (api: StepNavApi | undefined) => void;
+  onStepNavReady?: (
+    api: { mark: (i: number) => void; jump: (i: number) => boolean } | undefined,
+  ) => void;
 }) {
   onCleanup(() => props.onUnmount(props.agentId));
 
@@ -655,7 +629,7 @@ function AgentTerminalPane(props: {
                 }}
                 onData={(data) => markAgentOutput(a().id, data, props.task.id)}
                 onFileLink={props.onFileLink}
-                onPromptDetected={(text) => setLastPrompt(props.task.id, text, a().id)}
+                onPromptDetected={(text) => setLastPrompt(props.task.id, text)}
                 onReady={(focusFn) => props.onReady(a().id, focusFn)}
                 onStepNavReady={props.onStepNavReady}
                 fontSize={13}
