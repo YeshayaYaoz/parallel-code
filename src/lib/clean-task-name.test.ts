@@ -127,6 +127,14 @@ describe('nextDefaultTaskName', () => {
     expect(nextDefaultTaskName(['Task 5'])).toBe('Task 6');
   });
 
+  it('orders numerically, not lexically', () => {
+    expect(nextDefaultTaskName(['Task 3', 'Task 10'])).toBe('Task 11');
+  });
+
+  it('is case-sensitive — lowercase "task" does not match', () => {
+    expect(nextDefaultTaskName(['task 3'])).toBe('Task 1');
+  });
+
   it('ignores names that only resemble the pattern', () => {
     expect(nextDefaultTaskName(['Task 1 done', 'Task two', 'Subtask 9'])).toBe('Task 1');
   });
