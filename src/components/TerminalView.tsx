@@ -115,6 +115,9 @@ interface TerminalViewProps {
   cwd: string;
   env?: Record<string, string>;
   isShell?: boolean;
+  /** Scroll bookmarks reserve a 24px left gutter. Standalone full-size terminal
+   *  panels opt out (pass false) so they fill the pane with no left inset. */
+  bookmarksEnabled?: boolean;
   stepsEnabled?: boolean;
   dockerMode?: boolean;
   dockerImage?: string;
@@ -1138,30 +1141,36 @@ export function TerminalView(props: TerminalViewProps) {
   const mcpError = () => store.tasks[props.taskId]?.mcpStartupError;
   const mcpStatus = () => store.tasks[props.taskId]?.mcpStartupStatus;
 
+  // Standalone full-size terminal panels opt out of the bookmark gutter so they
+  // fill the pane with no left inset; everything else reserves the strip.
+  const showBookmarks = () => props.bookmarksEnabled !== false;
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <TerminalBookmarkGutter
-        width={BOOKMARK_GUTTER_WIDTH}
-        bookmarks={bookmarks()}
-        topOf={bookmarkTopPx}
-        onJump={jumpToBookmark}
-        onRemove={removeBookmark}
-        aboveCount={bookmarkLayout().aboveCount}
-        aboveTop={bookmarkLayout().aboveTop}
-        belowCount={bookmarkLayout().belowCount}
-        belowTop={bookmarkLayout().belowTop}
-        onJumpAbove={jumpAboveOverflow}
-        onJumpBelow={jumpBelowOverflow}
-        createVisible={selectionActive()}
-        createTop={selectionButtonTop()}
-        onCreate={addBookmarkFromSelection}
-      />
+      <Show when={showBookmarks()}>
+        <TerminalBookmarkGutter
+          width={BOOKMARK_GUTTER_WIDTH}
+          bookmarks={bookmarks()}
+          topOf={bookmarkTopPx}
+          onJump={jumpToBookmark}
+          onRemove={removeBookmark}
+          aboveCount={bookmarkLayout().aboveCount}
+          aboveTop={bookmarkLayout().aboveTop}
+          belowCount={bookmarkLayout().belowCount}
+          belowTop={bookmarkLayout().belowTop}
+          onJumpAbove={jumpAboveOverflow}
+          onJumpBelow={jumpBelowOverflow}
+          createVisible={selectionActive()}
+          createTop={selectionButtonTop()}
+          onCreate={addBookmarkFromSelection}
+        />
+      </Show>
       <div
         ref={containerRef}
         style={{
-          width: `calc(100% - ${BOOKMARK_GUTTER_WIDTH}px)`,
+          width: showBookmarks() ? `calc(100% - ${BOOKMARK_GUTTER_WIDTH}px)` : '100%',
           height: '100%',
-          'margin-left': `${BOOKMARK_GUTTER_WIDTH}px`,
+          'margin-left': showBookmarks() ? `${BOOKMARK_GUTTER_WIDTH}px` : '0',
           overflow: 'hidden',
           padding: '4px 0 0 4px',
           contain: 'strict',

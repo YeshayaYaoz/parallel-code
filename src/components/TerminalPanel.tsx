@@ -142,6 +142,7 @@ export function TerminalPanel(props: TerminalPanelProps) {
           taskId={props.terminal.id}
           agentId={props.terminal.agentId}
           isShell
+          bookmarksEnabled={false}
           isFocused={isPanelFocused(props.terminal.id, 'terminal')}
           command=""
           args={['-l']}
