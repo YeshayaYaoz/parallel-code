@@ -14,6 +14,11 @@ interface ServerResult {
 // that arrive after stop are discarded instead of overwriting the store.
 let stopGeneration = 0;
 
+/** Persisted toggle: whether to auto-start the remote server on app launch. */
+export function setAutoStartRemoteAccess(enabled: boolean): void {
+  setStore('autoStartRemoteAccess', enabled);
+}
+
 export async function startRemoteAccess(port?: number): Promise<ServerResult> {
   const result = await invoke<ServerResult>(IPC.StartRemoteServer, port ? { port } : {});
   if (result.unavailableReason) {

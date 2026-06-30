@@ -3,7 +3,12 @@
 import { Show, createSignal, createEffect, onCleanup, createMemo, untrack } from 'solid-js';
 import { Dialog } from './Dialog';
 import { store } from '../store/core';
-import { startRemoteAccess, stopRemoteAccess, refreshRemoteStatus } from '../store/remote';
+import {
+  startRemoteAccess,
+  stopRemoteAccess,
+  refreshRemoteStatus,
+  setAutoStartRemoteAccess,
+} from '../store/remote';
 import { theme } from '../lib/theme';
 import type { RemoteAccess } from '../store/types';
 
@@ -394,6 +399,26 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
             </span>
           </div>
         </Show>
+
+        {/* Auto-start on launch */}
+        <label
+          style={{
+            display: 'flex',
+            'align-items': 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            'font-size': '13px',
+            color: theme.fgMuted,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={store.autoStartRemoteAccess}
+            onChange={(e) => setAutoStartRemoteAccess(e.currentTarget.checked)}
+            style={{ 'accent-color': theme.accent, cursor: 'pointer' }}
+          />
+          Start automatically on launch
+        </label>
 
         {/* Disconnect — always available when server is running */}
         <button

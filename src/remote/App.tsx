@@ -3,6 +3,7 @@ import { initAuth } from './auth';
 import { connect } from './ws';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
+import { ConnectScreen } from './ConnectScreen';
 
 export function App() {
   const [authed, setAuthed] = createSignal(false);
@@ -19,39 +20,18 @@ export function App() {
     setView('detail');
   }
 
+  function onConnected() {
+    setAuthed(true);
+    connect();
+  }
+
   onMount(() => {
     const token = initAuth();
-    if (token) {
-      setAuthed(true);
-      connect();
-    }
+    if (token) onConnected();
   });
 
   return (
-    <Show
-      when={authed()}
-      fallback={
-        <div
-          style={{
-            display: 'flex',
-            'align-items': 'center',
-            'justify-content': 'center',
-            height: '100%',
-            color: '#999',
-            'font-size': '17px',
-            padding: '20px',
-            'text-align': 'center',
-          }}
-        >
-          <div>
-            <p style={{ 'margin-bottom': '12px' }}>Not authenticated.</p>
-            <p style={{ 'font-size': '14px', color: '#666' }}>
-              Scan the QR code from the Parallel Code desktop app to connect.
-            </p>
-          </div>
-        </div>
-      }
-    >
+    <Show when={authed()} fallback={<ConnectScreen onConnected={onConnected} />}>
       <Show when={view() === 'detail'} fallback={<AgentList onSelect={selectAgent} />}>
         <AgentDetail
           agentId={detailAgentId()}
