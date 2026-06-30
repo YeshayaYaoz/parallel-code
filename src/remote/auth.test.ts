@@ -40,19 +40,22 @@ describe('applyConnectionString', () => {
     expect(storage['parallel-code-token']).toBeUndefined();
   });
 
-  it('accepts a bare token', () => {
-    const result = applyConnectionString('  AbC-123_def456ghi789  ');
-    expect(result).toBe('stored');
-    expect(storage['parallel-code-token']).toBe('AbC-123_def456ghi789');
-  });
-
   it('rejects a URL with no token', () => {
     expect(applyConnectionString('http://192.168.1.42:7777/')).toBe('invalid');
   });
 
-  it('rejects empty or non-token input', () => {
+  it('rejects non-http(s) schemes even when they carry a token', () => {
+    expect(applyConnectionString('javascript:fetch(1)//?token=aaaaaaaaaaaaaaaa')).toBe('invalid');
+    expect(applyConnectionString('data:text/html,x?token=aaaaaaaaaaaaaaaa')).toBe('invalid');
+    expect(applyConnectionString('file:///etc/passwd?token=aaaaaaaaaaaaaaaa')).toBe('invalid');
+    expect(storage['parallel-code-token']).toBeUndefined();
+    expect(location.href).toBe('http://192.168.1.42:7777/');
+  });
+
+  it('rejects empty or non-URL input', () => {
     expect(applyConnectionString('')).toBe('invalid');
     expect(applyConnectionString('   ')).toBe('invalid');
     expect(applyConnectionString('hello world')).toBe('invalid');
+    expect(applyConnectionString('AbC-123_def456ghi789')).toBe('invalid');
   });
 });

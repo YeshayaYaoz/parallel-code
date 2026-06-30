@@ -1,12 +1,16 @@
 import { createSignal, Show } from 'solid-js';
 import { applyConnectionString } from './auth';
 
+interface ConnectScreenProps {
+  onConnected: () => void;
+}
+
 /**
  * Shown when the app has no valid connection (fresh install, or the token went
  * stale after a desktop restart). Lets the user re-establish the link by pasting
  * the connection URL from the desktop "Connect Phone" dialog.
  */
-export function ConnectScreen(props: { onConnected: () => void }) {
+export function ConnectScreen(props: ConnectScreenProps) {
   const [input, setInput] = createSignal('');
   const [error, setError] = createSignal<string | null>(null);
 
@@ -33,12 +37,15 @@ export function ConnectScreen(props: { onConnected: () => void }) {
         padding: '24px',
         gap: '20px',
         'text-align': 'center',
-        color: '#999',
+        background: '#0b0f14',
+        color: '#678197',
       }}
     >
       <div>
-        <p style={{ 'font-size': '17px', color: '#ccc', 'margin-bottom': '8px' }}>Not connected</p>
-        <p style={{ 'font-size': '14px', color: '#666', 'line-height': '1.5' }}>
+        <p style={{ 'font-size': '17px', color: '#d7e4f0', 'margin-bottom': '8px' }}>
+          Not connected
+        </p>
+        <p style={{ 'font-size': '14px', color: '#678197', 'line-height': '1.5' }}>
           On your computer, open Parallel Code → <strong>Connect Phone</strong>, then scan the QR
           code or paste the connection URL below.
         </p>
@@ -68,10 +75,10 @@ export function ConnectScreen(props: { onConnected: () => void }) {
             padding: '12px 14px',
             'font-size': '15px',
             'font-family': 'monospace',
-            background: '#2a2a2a',
-            border: '1px solid #444',
+            background: '#10161d',
+            border: '1px solid #223040',
             'border-radius': '8px',
-            color: '#e0e0e0',
+            color: '#d7e4f0',
             outline: 'none',
           }}
         />
@@ -82,8 +89,8 @@ export function ConnectScreen(props: { onConnected: () => void }) {
             padding: '12px 14px',
             'font-size': '15px',
             'font-weight': '600',
-            background: input().trim() ? '#2ec8ff' : '#333',
-            color: input().trim() ? '#000' : '#777',
+            background: input().trim() ? '#2ec8ff' : '#1a2430',
+            color: input().trim() ? '#031018' : '#678197',
             border: 'none',
             'border-radius': '8px',
             cursor: input().trim() ? 'pointer' : 'default',
@@ -92,7 +99,7 @@ export function ConnectScreen(props: { onConnected: () => void }) {
           Connect
         </button>
         <Show when={error()}>
-          <p style={{ 'font-size': '13px', color: '#ff6b6b', margin: '0' }}>{error()}</p>
+          <p style={{ 'font-size': '13px', color: '#fca5a5', margin: '0' }}>{error()}</p>
         </Show>
       </form>
     </div>

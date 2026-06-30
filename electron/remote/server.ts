@@ -752,7 +752,18 @@ export function startRemoteServer(opts: {
 
     const ext = extname(fullPath);
     const contentType = MIME[ext] ?? 'application/octet-stream';
-    const cacheControl = ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable';
+    // HTML and the web manifest must revalidate so app/manifest changes reach
+    // already-installed PWA clients. Icons live at stable (non-content-hashed)
+    // URLs, so cache them briefly rather than immutably. Only Vite's hashed
+    // JS/CSS bundles are safe to pin immutable for a year.
+    let cacheControl: string;
+    if (ext === '.html' || ext === '.webmanifest') {
+      cacheControl = 'no-cache';
+    } else if (ext === '.png' || ext === '.svg' || ext === '.ico') {
+      cacheControl = 'public, max-age=86400';
+    } else {
+      cacheControl = 'public, max-age=31536000, immutable';
+    }
     serveFile(fullPath, contentType, cacheControl);
   });
 
