@@ -47,5 +47,5 @@
 - [x] 6.1 Create an implementation branch from synced main, e.g. `fix/issue-161-test-harness-media-hygiene`.
 - [x] 6.2 Commit by finding area: coordinator harness, store helper, media cleanup, residual steps logging cleanup.
 - [x] 6.3 Rebase once more on latest `upstream/main` after validation and before pushing.
-- [ ] 6.4 Push the branch to `ASRagab/parallel-code`.
-- [ ] 6.5 Create a PR to `johannesjo/parallel-code:main` that links issue #161, states which findings are addressed, notes that PR #186 already handled the main-process steps watcher warning, lists deferred media variants if any, and includes validation output.
+- [x] 6.4 Push the branch to `ASRagab/parallel-code`.
+- [x] 6.5 Create a PR to `johannesjo/parallel-code:main` that links issue #161, states which findings are addressed, notes that PR #186 already handled the main-process steps watcher warning, lists deferred media variants if any, and includes validation output.
