@@ -441,11 +441,13 @@ export function startRemoteServer(opts: {
           return;
         }
       }
-      // Mobile / paired tokens: read-only REST access to agent status only
-      // (terminal input goes over the WebSocket, not REST). Paired tokens get the
-      // same read routes here; their extra task-creation routes are handled above.
-      // Coordinator routes stay excluded — the mobile view shows agent terminals,
-      // and these tokens are reachable by anyone on the local network.
+      // Mobile / paired tokens: the REST surface here is read-only agent status.
+      // (NOTE: these tokens are NOT read-only overall — the WebSocket lets them
+      // type into agent PTYs; that is the intended "interact with your terminals"
+      // feature. Pairing gates the *additional* ability to create new tasks,
+      // handled above.) Paired tokens get the same read routes here. Coordinator
+      // routes stay excluded; all of these tokens are reachable by anyone on the
+      // local network.
       if (tokenClass === 'mobile' || tokenClass === 'paired') {
         const allowed =
           req.method === 'GET' &&

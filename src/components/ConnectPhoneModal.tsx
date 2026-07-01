@@ -50,6 +50,7 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
   const [mode, setMode] = createSignal<NetworkMode>('wifi');
   const [pairingPin, setPairingPin] = createSignal<string | null>(null);
   const [pairingError, setPairingError] = createSignal<string | null>(null);
+  const [showRisks, setShowRisks] = createSignal(false);
   let stopPolling: (() => void) | undefined;
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let pairingTimer: ReturnType<typeof setTimeout> | undefined;
@@ -511,6 +512,67 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
                 </button>
               </>
             )}
+          </Show>
+        </div>
+
+        {/* Risks — collapsible, honest disclosure of what connecting exposes */}
+        <div style={{ width: '100%' }}>
+          <button
+            onClick={() => setShowRisks((v) => !v)}
+            aria-expanded={showRisks()}
+            style={{
+              display: 'flex',
+              'align-items': 'center',
+              gap: '6px',
+              width: '100%',
+              padding: '4px 0',
+              background: 'transparent',
+              border: 'none',
+              color: theme.fgMuted,
+              cursor: 'pointer',
+              'font-size': '13px',
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-block',
+                transform: showRisks() ? 'rotate(90deg)' : 'none',
+                transition: 'transform 0.15s ease',
+                'font-size': '10px',
+              }}
+            >
+              ▶
+            </span>
+            Risks
+          </button>
+          <Show when={showRisks()}>
+            <ul
+              style={{
+                margin: '6px 0 0',
+                padding: '0 0 0 18px',
+                display: 'flex',
+                'flex-direction': 'column',
+                gap: '6px',
+                'font-size': '12px',
+                'line-height': '1.5',
+                color: theme.fgMuted,
+                'text-align': 'left',
+              }}
+            >
+              <li>
+                Anyone on your network with the link can view your agent terminals and type into
+                running agents.
+              </li>
+              <li>
+                The Wi-Fi connection is unencrypted. Prefer Tailscale, or only connect on a network
+                you trust.
+              </li>
+              <li>
+                A paired phone can create new tasks, which run code on this computer, until you
+                disconnect.
+              </li>
+              <li>Disconnecting stops the server and revokes every connected and paired device.</li>
+            </ul>
           </Show>
         </div>
 
