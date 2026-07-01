@@ -221,19 +221,25 @@ function readJsonBody(
   maxBytes = 64 * 1024,
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    let data = '';
+    const chunks: Buffer[] = [];
+    let size = 0;
     let tooLarge = false;
     req.on('data', (chunk: Buffer) => {
       if (tooLarge) return;
-      data += chunk.toString();
-      if (data.length > maxBytes) {
+      size += chunk.length;
+      if (size > maxBytes) {
         tooLarge = true;
         req.destroy();
         reject(new Error('Body too large'));
+        return;
       }
+      chunks.push(chunk);
     });
     req.on('end', () => {
       if (tooLarge) return;
+      // Decode once from the full buffer so a multi-byte UTF-8 char split
+      // across chunk boundaries isn't corrupted (matters for non-ASCII prompts).
+      const data = Buffer.concat(chunks).toString('utf8');
       try {
         resolve(data ? (JSON.parse(data) as Record<string, unknown>) : {});
       } catch {
@@ -276,7 +282,6 @@ export function startRemoteServer(opts: {
   // Tokens minted by successful device pairing. In-memory only: they die with
   // the server, consistent with the mobile/coordinator tokens above. One entry
   // per paired phone.
-  const pairedTokens = new Set<string>();
   const pairedTokenBufs: Buffer[] = [];
   // At most one pending PIN at a time — a fresh mint replaces any prior one.
   let pairing: { pinBuf: Buffer; expiresAt: number; attemptsLeft: number } | null = null;
@@ -337,7 +342,6 @@ export function startRemoteServer(opts: {
     }
     pairing = null; // single-use
     const pairedToken = randomBytes(24).toString('base64url');
-    pairedTokens.add(pairedToken);
     pairedTokenBufs.push(Buffer.from(pairedToken));
     return { ok: true, token: pairedToken };
   }
@@ -360,11 +364,9 @@ export function startRemoteServer(opts: {
         return;
       }
 
-      const jsonHead = (status: number) =>
-        res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'application/json' });
       const jsonEnd = (status: number, body: unknown) => {
         if (res.headersSent) return;
-        jsonHead(status);
+        res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify(body));
       };
 

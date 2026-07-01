@@ -164,6 +164,7 @@ export function NewTaskScreen(props: NewTaskScreenProps) {
               placeholder="What should the agent work on?"
               value={prompt()}
               onInput={(e) => setPrompt(e.currentTarget.value)}
+              maxlength={16000}
               rows={6}
               style={{
                 ...inputStyle,

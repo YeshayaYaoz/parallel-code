@@ -166,6 +166,10 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
 
   async function handleDisconnect() {
     stopPolling?.();
+    // The server's pairing state resets on stop; drop any PIN still on screen
+    // so it can't be entered against the new (empty) state.
+    setPairingPin(null);
+    if (pairingTimer !== undefined) clearTimeout(pairingTimer);
     const result = await stopRemoteAccess();
     if (!result.stopped) {
       if (result.reason === 'coordinator_active') {

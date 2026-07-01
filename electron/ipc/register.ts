@@ -1209,10 +1209,14 @@ export function registerAllHandlers(win: BrowserWindow): void {
         reject(new Error('Desktop app is not available'));
         return;
       }
+      // Generous timeout: creating a task builds a git worktree and symlinks
+      // gitignored dirs (e.g. node_modules), which can take a while on large
+      // repos. Too short a timeout would report failure to the phone after the
+      // task was actually created, inviting a duplicate on retry.
       const timer = setTimeout(() => {
         pendingRemoteRequests.delete(reqId);
         reject(new Error('Desktop app did not respond'));
-      }, 30_000);
+      }, 120_000);
       pendingRemoteRequests.set(reqId, { resolve: resolve as (v: unknown) => void, reject, timer });
       win.webContents.send(channel, { reqId, ...payload });
     });
@@ -1233,7 +1237,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
   const mobileTaskBridge = {
     getProjects: () => callRenderer<RemoteProject[]>(IPC.Remote_GetProjectsRequest, {}),
     createTaskFromMobile: (req: { projectId: string; name: string; prompt: string }) =>
-      callRenderer<{ taskId: string }>(IPC.Remote_CreateTaskRequest, { ...req }),
+      callRenderer<{ taskId: string }>(IPC.Remote_CreateTaskRequest, req),
   };
 
   ipcMain.handle(IPC.GeneratePairingPin, () => {
