@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { expectDefined, type MockStoreHarness } from './test-helpers';
 
 // Mock the SolidJS store before importing the module under test.
 let mockAutoTrustFolders = false;
@@ -6,22 +7,53 @@ let mockActiveTaskId: string | null = null;
 let mockTasks: Record<string, unknown> = {};
 let mockAgents: Record<string, unknown> = {};
 let mockTaskGitStatus: Record<string, unknown> = {};
-vi.mock('./core', () => ({
-  store: new Proxy(
-    {},
-    {
-      get(_target, prop) {
-        if (prop === 'autoTrustFolders') return mockAutoTrustFolders;
-        if (prop === 'activeTaskId') return mockActiveTaskId;
-        if (prop === 'tasks') return mockTasks;
-        if (prop === 'agents') return mockAgents;
-        if (prop === 'taskGitStatus') return mockTaskGitStatus;
-        return undefined;
-      },
-    },
-  ),
-  setStore: vi.fn(),
+const core = vi.hoisted(() => ({
+  harness: undefined as
+    | MockStoreHarness<{
+        autoTrustFolders: boolean;
+        activeTaskId: string | null;
+        tasks: Record<string, unknown>;
+        agents: Record<string, unknown>;
+        taskGitStatus: Record<string, unknown>;
+      }>
+    | undefined,
 }));
+vi.mock('./core', async () => {
+  const { createMockStoreHarness } = await import('./test-helpers');
+  core.harness = createMockStoreHarness({
+    get autoTrustFolders() {
+      return mockAutoTrustFolders;
+    },
+    set autoTrustFolders(next) {
+      mockAutoTrustFolders = next;
+    },
+    get activeTaskId() {
+      return mockActiveTaskId;
+    },
+    set activeTaskId(next) {
+      mockActiveTaskId = next;
+    },
+    get tasks() {
+      return mockTasks;
+    },
+    set tasks(next) {
+      mockTasks = next;
+    },
+    get agents() {
+      return mockAgents;
+    },
+    set agents(next) {
+      mockAgents = next;
+    },
+    get taskGitStatus() {
+      return mockTaskGitStatus;
+    },
+    set taskGitStatus(next) {
+      mockTaskGitStatus = next;
+    },
+  });
+  return core.harness.moduleMock();
+});
 
 // Mock IPC so tryAutoTrust's invoke call doesn't hit Electron.
 vi.mock('../lib/ipc', () => ({
@@ -89,6 +121,8 @@ function setMockAgent(agentId: string, overrides: Record<string, unknown> = {}):
 
 beforeEach(() => {
   vi.useFakeTimers();
+  const harness = expectDefined(core.harness, 'mock store harness');
+  harness.reset(harness.state());
   vi.mocked(invoke).mockClear();
   vi.mocked(setStore).mockClear();
   mockAutoTrustFolders = false;
