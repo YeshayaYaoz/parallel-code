@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { existsSync, createReadStream } from 'fs';
 import { join, resolve, relative, extname, isAbsolute } from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
-import { randomBytes, timingSafeEqual } from 'crypto';
+import { randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import { networkInterfaces } from 'os';
 import {
   writeToAgent,
@@ -33,6 +33,10 @@ export interface MCPLogEntry {
 const MAX_LOG_ENTRIES = 200;
 const REST_COORDINATOR_SENTINEL = 'api';
 const MAX_REST_PROMPT_BYTES = 16 * 1024;
+// Device pairing: a mobile client proves it can see the desktop by entering a
+// short-lived PIN, which elevates it to a "paired" token allowed to create tasks.
+const PAIRING_PIN_TTL_MS = 5 * 60_000;
+const PAIRING_MAX_ATTEMPTS = 5;
 const mcpLogs: MCPLogEntry[] = [];
 
 function mcpLog(level: 'info' | 'error', msg: string): void {
@@ -148,6 +152,14 @@ interface RemoteServer {
   wifiUrl: string | null;
   connectedClients: () => number;
   bindHost: string;
+  /** Mint a fresh pairing PIN (shown on the desktop) for a phone to enter. */
+  generatePairingPin: () => { pin: string; expiresAt: number };
+}
+
+/** A project the mobile "New Task" screen can target. */
+export interface RemoteProject {
+  id: string;
+  name: string;
 }
 
 /** Detect available network IPs (WiFi and Tailscale). */
@@ -203,6 +215,35 @@ function buildAgentList(
   return Array.from(byTask.values());
 }
 
+/** Read and JSON-parse a request body with a hard size cap. */
+function readJsonBody(
+  req: IncomingMessage,
+  maxBytes = 64 * 1024,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    let tooLarge = false;
+    req.on('data', (chunk: Buffer) => {
+      if (tooLarge) return;
+      data += chunk.toString();
+      if (data.length > maxBytes) {
+        tooLarge = true;
+        req.destroy();
+        reject(new Error('Body too large'));
+      }
+    });
+    req.on('end', () => {
+      if (tooLarge) return;
+      try {
+        resolve(data ? (JSON.parse(data) as Record<string, unknown>) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 export function startRemoteServer(opts: {
   port: number;
   host?: string;
@@ -214,6 +255,14 @@ export function startRemoteServer(opts: {
     lastLine: string;
   };
   getCoordinator: () => Coordinator | null;
+  /** List projects the mobile "New Task" screen can target (renderer-backed). */
+  getProjects?: () => Promise<RemoteProject[]>;
+  /** Create a top-level task on behalf of a paired phone (renderer-backed). */
+  createTaskFromMobile?: (req: {
+    projectId: string;
+    name: string;
+    prompt: string;
+  }) => Promise<{ taskId: string }>;
 }): Promise<RemoteServer> {
   const token = randomBytes(24).toString('base64url');
   const subtaskToken = randomBytes(24).toString('base64url');
@@ -224,9 +273,22 @@ export function startRemoteServer(opts: {
   const subtaskTokenBuf = Buffer.from(subtaskToken);
   const mobileTokenBuf = Buffer.from(mobileToken);
 
-  function classifyCandidate(
-    candidate: string | null | undefined,
-  ): 'coordinator' | 'subtask' | 'mobile' | null {
+  // Tokens minted by successful device pairing. In-memory only: they die with
+  // the server, consistent with the mobile/coordinator tokens above. One entry
+  // per paired phone.
+  const pairedTokens = new Set<string>();
+  const pairedTokenBufs: Buffer[] = [];
+  // At most one pending PIN at a time — a fresh mint replaces any prior one.
+  let pairing: { pinBuf: Buffer; expiresAt: number; attemptsLeft: number } | null = null;
+
+  type TokenClass = 'coordinator' | 'subtask' | 'mobile' | 'paired';
+
+  function isPairedToken(buf: Buffer): boolean {
+    // Timing-safe membership check; length guard avoids timingSafeEqual throwing.
+    return pairedTokenBufs.some((t) => t.length === buf.length && timingSafeEqual(buf, t));
+  }
+
+  function classifyCandidate(candidate: string | null | undefined): TokenClass | null {
     if (!candidate) return null;
     const buf = Buffer.from(candidate);
     if (buf.length === tokenBuf.length && timingSafeEqual(buf, tokenBuf)) return 'coordinator';
@@ -234,6 +296,7 @@ export function startRemoteServer(opts: {
       return 'subtask';
     if (buf.length === mobileTokenBuf.length && timingSafeEqual(buf, mobileTokenBuf))
       return 'mobile';
+    if (isPairedToken(buf)) return 'paired';
     return null;
   }
 
@@ -244,8 +307,39 @@ export function startRemoteServer(opts: {
     return url.searchParams.get('token');
   }
 
-  function classifyToken(req: IncomingMessage): 'coordinator' | 'subtask' | 'mobile' | null {
+  function classifyToken(req: IncomingMessage): TokenClass | null {
     return classifyCandidate(extractRawToken(req));
+  }
+
+  function generatePairingPin(): { pin: string; expiresAt: number } {
+    // 6-digit zero-padded PIN; single active PIN, short TTL, capped attempts.
+    const pin = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const expiresAt = Date.now() + PAIRING_PIN_TTL_MS;
+    pairing = { pinBuf: Buffer.from(pin), expiresAt, attemptsLeft: PAIRING_MAX_ATTEMPTS };
+    return { pin, expiresAt };
+  }
+
+  /** Verify a submitted PIN; on success mints and returns a paired token. */
+  function verifyPairingPin(submitted: string): { ok: true; token: string } | { ok: false } {
+    if (!pairing || Date.now() > pairing.expiresAt) {
+      pairing = null;
+      return { ok: false };
+    }
+    if (pairing.attemptsLeft <= 0) return { ok: false };
+    const submittedBuf = Buffer.from(submitted);
+    const match =
+      submittedBuf.length === pairing.pinBuf.length &&
+      timingSafeEqual(submittedBuf, pairing.pinBuf);
+    if (!match) {
+      pairing.attemptsLeft -= 1;
+      if (pairing.attemptsLeft <= 0) pairing = null;
+      return { ok: false };
+    }
+    pairing = null; // single-use
+    const pairedToken = randomBytes(24).toString('base64url');
+    pairedTokens.add(pairedToken);
+    pairedTokenBufs.push(Buffer.from(pairedToken));
+    return { ok: true, token: pairedToken };
   }
 
   const SECURITY_HEADERS: Record<string, string> = {
@@ -265,6 +359,77 @@ export function startRemoteServer(opts: {
         res.end(JSON.stringify({ error: 'unauthorized' }));
         return;
       }
+
+      const jsonHead = (status: number) =>
+        res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'application/json' });
+      const jsonEnd = (status: number, body: unknown) => {
+        if (res.headersSent) return;
+        jsonHead(status);
+        res.end(JSON.stringify(body));
+      };
+
+      // --- Device pairing (mobile → paired elevation) ---
+      // A phone holding the read-only mobile token submits the PIN shown on the
+      // desktop to obtain a "paired" token allowed to create tasks. Proving the
+      // user can read the desktop screen is the same trust basis as the QR code.
+      if (url.pathname === '/api/pair/verify' && req.method === 'POST') {
+        if (tokenClass !== 'mobile' && tokenClass !== 'paired')
+          return jsonEnd(403, { error: 'forbidden' });
+        readJsonBody(req)
+          .then((body) => {
+            const pin = typeof body.pin === 'string' ? body.pin.trim() : '';
+            if (!/^\d{6}$/.test(pin)) return jsonEnd(400, { error: 'pin must be 6 digits' });
+            const outcome = verifyPairingPin(pin);
+            if (!outcome.ok) return jsonEnd(401, { error: 'invalid or expired code' });
+            jsonEnd(201, { token: outcome.token });
+          })
+          .catch(() => jsonEnd(400, { error: 'bad request' }));
+        return;
+      }
+
+      // --- Paired-mobile task creation ---
+      // GET projects for the picker + POST a new top-level task. Both require the
+      // elevated "paired" token; the read-only mobile token is rejected here.
+      if (url.pathname === '/api/mobile/projects' || url.pathname === '/api/mobile/tasks') {
+        if (tokenClass !== 'paired') return jsonEnd(403, { error: 'forbidden' });
+
+        if (url.pathname === '/api/mobile/projects' && req.method === 'GET') {
+          if (!opts.getProjects) return jsonEnd(503, { error: 'task creation unavailable' });
+          opts
+            .getProjects()
+            .then((projects) => jsonEnd(200, projects))
+            .catch((err) => jsonEnd(500, { error: String(err) }));
+          return;
+        }
+
+        if (url.pathname === '/api/mobile/tasks' && req.method === 'POST') {
+          const createTask = opts.createTaskFromMobile;
+          if (!createTask) return jsonEnd(503, { error: 'task creation unavailable' });
+          readJsonBody(req)
+            .then((body) => {
+              const rawName = typeof body.name === 'string' ? body.name : '';
+              // Strip control chars so a task name can't inject terminal/log escapes.
+              // eslint-disable-next-line no-control-regex
+              const name = rawName.replace(/[\x00-\x1f\x7f]/g, ' ').trim();
+              if (!name) return jsonEnd(400, { error: 'name must be a non-empty string' });
+              if (name.length > 200)
+                return jsonEnd(400, { error: 'name must be 200 characters or fewer' });
+              const prompt = validateRestPrompt(body.prompt, true);
+              if (typeof prompt !== 'string') return jsonEnd(400, prompt);
+              const projectId = typeof body.projectId === 'string' ? body.projectId : '';
+              if (!projectId)
+                return jsonEnd(400, { error: 'projectId must be a non-empty string' });
+              createTask({ projectId, name, prompt })
+                .then((r) => jsonEnd(201, { taskId: r.taskId }))
+                .catch((err) => jsonEnd(500, { error: String(err) }));
+            })
+            .catch(() => jsonEnd(400, { error: 'bad request' }));
+          return;
+        }
+
+        return jsonEnd(405, { error: 'method not allowed' });
+      }
+
       if (tokenClass === 'subtask') {
         const allowed =
           req.method === 'POST' && /^\/api\/tasks\/[^/]+\/(?:done|land)$/.test(url.pathname);
@@ -274,12 +439,12 @@ export function startRemoteServer(opts: {
           return;
         }
       }
-      // Mobile token: read-only REST access to agent status only (terminal
-      // input goes over the WebSocket, not REST).
-      // Task/coordinator routes are intentionally excluded — the mobile view shows
-      // agent terminals, not coordinator sub-tasks, and the mobile token is embedded
-      // in a QR-code URL reachable by anyone on the local network.
-      if (tokenClass === 'mobile') {
+      // Mobile / paired tokens: read-only REST access to agent status only
+      // (terminal input goes over the WebSocket, not REST). Paired tokens get the
+      // same read routes here; their extra task-creation routes are handled above.
+      // Coordinator routes stay excluded — the mobile view shows agent terminals,
+      // and these tokens are reachable by anyone on the local network.
+      if (tokenClass === 'mobile' || tokenClass === 'paired') {
         const allowed =
           req.method === 'GET' &&
           (url.pathname === '/api/agents' || /^\/api\/agents\/[^/]+$/.test(url.pathname));
@@ -987,6 +1152,7 @@ export function startRemoteServer(opts: {
       return cur.tailscale ? `http://${cur.tailscale}:${opts.port}?token=${mobileToken}` : null;
     },
     connectedClients: () => authenticatedClients.size,
+    generatePairingPin,
     stop: () =>
       new Promise<void>((resolve) => {
         unsubSpawn();

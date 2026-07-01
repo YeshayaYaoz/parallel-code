@@ -8,6 +8,7 @@ import {
   stopRemoteAccess,
   refreshRemoteStatus,
   setAutoStartRemoteAccess,
+  generatePairingPin,
 } from '../store/remote';
 import { theme } from '../lib/theme';
 import type { RemoteAccess } from '../store/types';
@@ -47,13 +48,31 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
   const [error, setError] = createSignal<string | null>(null);
   const [copied, setCopied] = createSignal(false);
   const [mode, setMode] = createSignal<NetworkMode>('wifi');
+  const [pairingPin, setPairingPin] = createSignal<string | null>(null);
+  const [pairingError, setPairingError] = createSignal<string | null>(null);
   let stopPolling: (() => void) | undefined;
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  let pairingTimer: ReturnType<typeof setTimeout> | undefined;
   let qrRequestId = 0;
   onCleanup(() => {
     if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+    if (pairingTimer !== undefined) clearTimeout(pairingTimer);
     qrRequestId++;
   });
+
+  // Clear the displayed PIN once it expires so a stale code isn't left on screen.
+  async function handleGeneratePin() {
+    setPairingError(null);
+    try {
+      const { pin, expiresAt } = await generatePairingPin();
+      setPairingPin(pin);
+      if (pairingTimer !== undefined) clearTimeout(pairingTimer);
+      pairingTimer = setTimeout(() => setPairingPin(null), Math.max(0, expiresAt - Date.now()));
+    } catch (err) {
+      setPairingPin(null);
+      setPairingError(err instanceof Error ? err.message : 'Could not generate a code');
+    }
+  }
 
   const activeUrl = createMemo(() => connectionUrlForMode(store.remoteAccess, mode()));
 
@@ -419,6 +438,77 @@ export function ConnectPhoneModal(props: ConnectPhoneModalProps) {
           />
           Start automatically on launch
         </label>
+
+        {/* Pair a device to create tasks */}
+        <div
+          style={{
+            width: '100%',
+            'border-top': `1px solid ${theme.border}`,
+            'padding-top': '16px',
+            display: 'flex',
+            'flex-direction': 'column',
+            'align-items': 'center',
+            gap: '8px',
+          }}
+        >
+          <Show
+            when={pairingPin()}
+            fallback={
+              <>
+                <button
+                  onClick={handleGeneratePin}
+                  style={{
+                    padding: '7px 16px',
+                    background: theme.bgInput,
+                    border: `1px solid ${theme.border}`,
+                    'border-radius': '8px',
+                    color: theme.fg,
+                    cursor: 'pointer',
+                    'font-size': '13px',
+                    'font-weight': '500',
+                  }}
+                >
+                  Pair a device to create tasks
+                </button>
+                <Show when={pairingError()}>
+                  <span style={{ 'font-size': '12px', color: theme.error }}>{pairingError()}</span>
+                </Show>
+              </>
+            }
+          >
+            {(pin) => (
+              <>
+                <span style={{ 'font-size': '12px', color: theme.fgMuted }}>
+                  Enter this code on your phone (valid 5 min):
+                </span>
+                <span
+                  style={{
+                    'font-size': '30px',
+                    'font-weight': '700',
+                    'letter-spacing': '6px',
+                    'font-family': 'monospace',
+                    color: theme.accent,
+                  }}
+                >
+                  {pin()}
+                </span>
+                <button
+                  onClick={handleGeneratePin}
+                  style={{
+                    padding: '4px 10px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: theme.fgSubtle,
+                    cursor: 'pointer',
+                    'font-size': '12px',
+                  }}
+                >
+                  Generate a new code
+                </button>
+              </>
+            )}
+          </Show>
+        </div>
 
         {/* Disconnect — always available when server is running */}
         <button

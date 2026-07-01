@@ -1,4 +1,7 @@
 const TOKEN_KEY = 'parallel-code-token';
+// Elevated token obtained by entering the desktop pairing PIN. Grants
+// task-creation; kept separate from the read-only connection token.
+const PAIRED_TOKEN_KEY = 'parallel-code-paired-token';
 
 /** Extract token from URL query param and persist to localStorage. */
 export function initAuth(): string | null {
@@ -24,6 +27,21 @@ export function getToken(): string | null {
 /** Clear stored token. */
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Get the stored paired (task-creation) token, if this device has paired. */
+export function getPairedToken(): string | null {
+  return localStorage.getItem(PAIRED_TOKEN_KEY);
+}
+
+/** Persist the paired token after a successful pairing. */
+export function setPairedToken(token: string): void {
+  localStorage.setItem(PAIRED_TOKEN_KEY, token);
+}
+
+/** Clear the paired token (e.g. after it goes stale on a desktop restart). */
+export function clearPairedToken(): void {
+  localStorage.removeItem(PAIRED_TOKEN_KEY);
 }
 
 export type ConnectResult = 'stored' | 'navigating' | 'invalid';

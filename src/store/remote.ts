@@ -69,6 +69,14 @@ export async function stopRemoteAccess(): Promise<{ stopped: boolean; reason?: s
   return result;
 }
 
+/**
+ * Mint a short-lived pairing PIN shown on the desktop. A phone enters it to
+ * elevate its read-only connection to one that can create tasks.
+ */
+export function generatePairingPin(): Promise<{ pin: string; expiresAt: number }> {
+  return invoke<{ pin: string; expiresAt: number }>(IPC.GeneratePairingPin);
+}
+
 export async function refreshRemoteStatus(): Promise<void> {
   const gen = stopGeneration;
   const result = await invoke<{

@@ -36,7 +36,7 @@ import {
   isPrUrl,
 } from './pr-checks.js';
 import { readCoverageSummary } from './coverage.js';
-import { startRemoteServer, getMCPLogs } from '../remote/server.js';
+import { startRemoteServer, getMCPLogs, type RemoteProject } from '../remote/server.js';
 import { atomicWriteFileSync } from '../mcp/atomic.js';
 import { buildMcpLaunchArgs } from '../mcp/agent-args.js';
 import {
@@ -1191,6 +1191,56 @@ export function registerAllHandlers(win: BrowserWindow): void {
     });
   });
 
+  // --- Mobile task-creation bridge (paired phones) ---
+  // The remote HTTP server runs in main, but task orchestration (worktree +
+  // agent spawn + prompt) lives in the renderer. So a paired phone's request
+  // round-trips: main → webContents.send → renderer runs its normal createTask
+  // → renderer replies via Remote_RendererReply. Reusing the renderer path means
+  // mobile-created tasks also appear on the desktop as first-class tasks.
+  const pendingRemoteRequests = new Map<
+    string,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
+  >();
+
+  function callRenderer<T>(channel: IPC, payload: Record<string, unknown>): Promise<T> {
+    const reqId = crypto.randomUUID();
+    return new Promise<T>((resolve, reject) => {
+      if (win.isDestroyed()) {
+        reject(new Error('Desktop app is not available'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        pendingRemoteRequests.delete(reqId);
+        reject(new Error('Desktop app did not respond'));
+      }, 30_000);
+      pendingRemoteRequests.set(reqId, { resolve: resolve as (v: unknown) => void, reject, timer });
+      win.webContents.send(channel, { reqId, ...payload });
+    });
+  }
+
+  ipcMain.handle(
+    IPC.Remote_RendererReply,
+    (_e, args: { reqId: string; ok: boolean; data?: unknown; error?: string }) => {
+      const pending = pendingRemoteRequests.get(args.reqId);
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      pendingRemoteRequests.delete(args.reqId);
+      if (args.ok) pending.resolve(args.data);
+      else pending.reject(new Error(args.error ?? 'Task creation failed'));
+    },
+  );
+
+  const mobileTaskBridge = {
+    getProjects: () => callRenderer<RemoteProject[]>(IPC.Remote_GetProjectsRequest, {}),
+    createTaskFromMobile: (req: { projectId: string; name: string; prompt: string }) =>
+      callRenderer<{ taskId: string }>(IPC.Remote_CreateTaskRequest, { ...req }),
+  };
+
+  ipcMain.handle(IPC.GeneratePairingPin, () => {
+    if (!remoteServer) throw new Error('Remote server is not running');
+    return remoteServer.generatePairingPin();
+  });
+
   // --- Remote access ---
   ipcMain.handle(IPC.StartRemoteServer, async (_e, args: { port?: number }) => {
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
@@ -1208,6 +1258,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
         };
       },
       getCoordinator: () => coordinator,
+      ...mobileTaskBridge,
     };
 
     if (remoteServer) {
@@ -1611,6 +1662,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
             };
           },
           getCoordinator: () => coordinator,
+          ...mobileTaskBridge,
         });
         remoteServerStartedForMcp = true;
       }
