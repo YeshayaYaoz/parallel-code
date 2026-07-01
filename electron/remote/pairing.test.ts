@@ -22,7 +22,7 @@ vi.mock('./protocol.js', () => ({
   parseClientMessage: vi.fn(() => null),
 }));
 
-const { startRemoteServer } = await import('./server.js');
+const { startRemoteServer, toFriendlyListenError } = await import('./server.js');
 
 type Resp = { status: number; json: () => Promise<unknown> };
 
@@ -184,5 +184,22 @@ describe('paired-mobile routes', () => {
 
   it('rejects unauthenticated access', async () => {
     expect((await req('GET', '/api/mobile/projects', 'bogus-token')).status).toBe(401);
+  });
+});
+
+describe('toFriendlyListenError', () => {
+  it('rewrites EADDRINUSE to an actionable message but keeps the code for retry', () => {
+    const raw = Object.assign(new Error('listen EADDRINUSE: address already in use 0.0.0.0:7777'), {
+      code: 'EADDRINUSE',
+    }) as NodeJS.ErrnoException;
+    const friendly = toFriendlyListenError(raw, 7777);
+    expect(friendly.code).toBe('EADDRINUSE'); // retry loop still detects it
+    expect(friendly.message).toMatch(/already in use/i);
+    expect(friendly.message).toContain('7777');
+  });
+
+  it('passes other errors through unchanged', () => {
+    const other = Object.assign(new Error('boom'), { code: 'EACCES' }) as NodeJS.ErrnoException;
+    expect(toFriendlyListenError(other, 7777)).toBe(other);
   });
 });

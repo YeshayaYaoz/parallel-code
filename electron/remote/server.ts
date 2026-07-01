@@ -118,6 +118,26 @@ function parseLandSelfInput(body: Record<string, unknown>): LandSelfInput | stri
   return { verification: { checks }, summary };
 }
 
+/**
+ * Map a server `listen` error to a friendlier one for the UI, turning the
+ * cryptic "listen EADDRINUSE 0.0.0.0:7777" into actionable text. Preserves
+ * `.code` so the MCP free-port scan can still detect EADDRINUSE and retry.
+ */
+export function toFriendlyListenError(
+  err: NodeJS.ErrnoException,
+  port: number,
+): NodeJS.ErrnoException {
+  if (err.code === 'EADDRINUSE') {
+    const friendly = new Error(
+      `Port ${port} is already in use — another Parallel Code instance may be running. ` +
+        `Close it or free the port, then try again.`,
+    ) as NodeJS.ErrnoException;
+    friendly.code = 'EADDRINUSE';
+    return friendly;
+  }
+  return err;
+}
+
 /** Strip the token query param before logging or displaying a server URL. */
 export function redactServerUrl(rawUrl: string): string {
   try {
@@ -1173,7 +1193,7 @@ export function startRemoteServer(opts: {
   };
 
   return new Promise<RemoteServer>((resolve, reject) => {
-    const onError = (err: Error) => reject(err);
+    const onError = (err: NodeJS.ErrnoException) => reject(toFriendlyListenError(err, opts.port));
     server.once('error', onError);
     server.listen(opts.port, bindHost, () => {
       server.removeListener('error', onError);
