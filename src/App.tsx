@@ -545,7 +545,7 @@ function App() {
     const offStepsContent = window.electron.ipcRenderer.on(IPC.StepsContent, (data: unknown) => {
       if (!data || typeof data !== 'object') return;
       const msg = data as { taskId: string; steps: unknown[] | null };
-      console.warn('[steps.recv]', msg.taskId, 'len=', msg.steps?.length ?? 'null');
+      log.debug('steps', 'recv', { taskId: msg.taskId, len: msg.steps?.length ?? null });
       if (msg.taskId && store.tasks[msg.taskId]) {
         setStepsContent(msg.taskId, msg.steps);
       }
