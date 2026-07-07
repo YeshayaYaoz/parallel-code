@@ -3,8 +3,6 @@ import { errMessage } from '../lib/log';
 import {
   store,
   pickAndAddProject,
-  removeProject,
-  removeProjectWithTasks,
   toggleNewTaskDialog,
   setActiveTask,
   toggleSidebar,
@@ -34,7 +32,7 @@ import {
   isCoordinatedChild,
 } from '../store/sidebar-order';
 import { ConnectPhoneModal } from './ConnectPhoneModal';
-import { ConfirmDialog } from './ConfirmDialog';
+import { RemoveProjectConfirm } from './RemoveProjectConfirm';
 import { EditProjectDialog } from './EditProjectDialog';
 import { ImportWorktreesDialog } from './ImportWorktreesDialog';
 import { SidebarFooter } from './SidebarFooter';
@@ -850,38 +848,7 @@ export function Sidebar() {
         />
 
         {/* Confirm remove project dialog */}
-        {(() => {
-          const id = confirmRemove();
-          const taskCount = id
-            ? [...store.taskOrder, ...store.collapsedTaskOrder].filter(
-                (tid) => store.tasks[tid]?.projectId === id,
-              ).length
-            : 0;
-          return (
-            <ConfirmDialog
-              open={id !== null}
-              title="Remove project?"
-              message={
-                taskCount > 0
-                  ? `This project has ${taskCount} open task(s). Removing it will also close all tasks, delete their worktrees and branches.`
-                  : 'Are you sure you want to remove this project?'
-              }
-              confirmLabel={taskCount > 0 ? 'Remove all' : 'Remove'}
-              danger
-              onConfirm={() => {
-                if (id) {
-                  if (taskCount > 0) {
-                    removeProjectWithTasks(id);
-                  } else {
-                    removeProject(id);
-                  }
-                }
-                setConfirmRemove(null);
-              }}
-              onCancel={() => setConfirmRemove(null)}
-            />
-          );
-        })()}
+        <RemoveProjectConfirm projectId={confirmRemove()} onDone={() => setConfirmRemove(null)} />
       </div>
       {/* Resize handle */}
       <div

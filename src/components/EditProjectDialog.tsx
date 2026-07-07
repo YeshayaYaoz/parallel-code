@@ -1,18 +1,13 @@
 import { createSignal, createEffect, For, Show } from 'solid-js';
 import { Dialog } from './Dialog';
-import {
-  updateProject,
-  PASTEL_HUES,
-  isProjectMissing,
-  relinkProject,
-  removeProjectWithTasks,
-} from '../store/store';
+import { updateProject, PASTEL_HUES, isProjectMissing, relinkProject } from '../store/store';
 import { sanitizeBranchPrefix, toBranchName } from '../lib/branch-name';
 import { theme, sectionLabelStyle } from '../lib/theme';
 import type { Project, TerminalBookmark, GitIsolationMode } from '../store/types';
 import { SegmentedButtons } from './SegmentedButtons';
 import { ImportWorktreesDialog } from './ImportWorktreesDialog';
 import { CloseIcon } from './icons';
+import { RemoveProjectConfirm } from './RemoveProjectConfirm';
 
 interface EditProjectDialogProps {
   project: Project | null;
@@ -35,6 +30,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
   const [bookmarks, setBookmarks] = createSignal<TerminalBookmark[]>([]);
   const [newCommand, setNewCommand] = createSignal('');
   const [showImportDialog, setShowImportDialog] = createSignal(false);
+  const [confirmRemove, setConfirmRemove] = createSignal(false);
   let nameRef!: HTMLInputElement;
 
   // Sync signals when project prop changes
@@ -50,6 +46,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
     setCoverageReportPath(p.coverageReportPath ?? '');
     setBookmarks(p.terminalBookmarks ? [...p.terminalBookmarks] : []);
     setNewCommand('');
+    setConfirmRemove(false);
     requestAnimationFrame(() => nameRef?.focus());
   });
 
@@ -200,10 +197,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    await removeProjectWithTasks(project().id);
-                    props.onClose();
-                  }}
+                  onClick={() => setConfirmRemove(true)}
                   style={{
                     padding: '5px 12px',
                     background: 'transparent',
@@ -571,6 +565,11 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
               open={showImportDialog()}
               project={project()}
               onClose={() => setShowImportDialog(false)}
+            />
+            <RemoveProjectConfirm
+              projectId={confirmRemove() ? project().id : null}
+              onDone={() => setConfirmRemove(false)}
+              onRemoved={() => props.onClose()}
             />
           </>
         )}
