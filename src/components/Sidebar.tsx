@@ -44,6 +44,7 @@ import { StatusDot, getDotTooltip } from './StatusDot';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { mod } from '../lib/platform';
+import { abbreviateHomePath } from '../lib/path';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import type { ImportableWorktree } from '../ipc/types';
@@ -326,19 +327,6 @@ export function Sidebar() {
     window.addEventListener('mouseup', onUp);
   }
 
-  function abbreviatePath(path: string): string {
-    const prefixes = ['/home/', '/Users/'];
-    for (const prefix of prefixes) {
-      if (path.startsWith(prefix)) {
-        const rest = path.slice(prefix.length);
-        const slashIdx = rest.indexOf('/');
-        if (slashIdx !== -1) return '~' + rest.slice(slashIdx);
-        return '~';
-      }
-    }
-    return path;
-  }
-
   function globalIndex(taskId: string): number {
     return taskIndexById().get(taskId) ?? -1;
   }
@@ -577,7 +565,7 @@ export function Sidebar() {
                         >
                           {isProjectMissing(project.id)
                             ? 'Folder not found'
-                            : abbreviatePath(project.path)}
+                            : abbreviateHomePath(project.path)}
                         </div>
                       </div>
                       <button

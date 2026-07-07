@@ -6,6 +6,7 @@ import { InfoBar } from './InfoBar';
 import { theme } from '../lib/theme';
 import { isMac } from '../lib/platform';
 import { parseGitHubUrl } from '../lib/github-url';
+import { abbreviateHomePath } from '../lib/path';
 import type { Task } from '../store/types';
 
 const infoBarBtnStyle: JSX.CSSProperties = {
@@ -46,6 +47,7 @@ export function TaskBranchInfoBar(props: TaskBranchInfoBarProps) {
     store.editorCommand
       ? `Click to open in ${store.editorCommand} · ${mod}+Click to reveal in file manager · ${mod}+Shift+Click to open the project root in ${store.editorCommand}`
       : `Click to reveal in file manager · ${mod}+Shift+Click to reveal the project root`;
+  const worktreeTitle = () => `${props.task.worktreePath}\n${editorTitle()}`;
 
   const handleOpenInEditor = (e: MouseEvent) => {
     const modKey = e.ctrlKey || e.metaKey;
@@ -231,9 +233,9 @@ export function TaskBranchInfoBar(props: TaskBranchInfoBarProps) {
       </Show>
       <button
         type="button"
-        title={editorTitle()}
+        title={worktreeTitle()}
         onClick={handleOpenInEditor}
-        style={{ ...infoBarBtnStyle, opacity: 0.6 }}
+        style={{ ...infoBarBtnStyle, opacity: 0.6, 'min-width': '0', overflow: 'hidden' }}
       >
         <svg
           width="12"
@@ -244,7 +246,16 @@ export function TaskBranchInfoBar(props: TaskBranchInfoBarProps) {
         >
           <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
         </svg>
-        {props.task.worktreePath}
+        <span
+          style={{
+            overflow: 'hidden',
+            'text-overflow': 'ellipsis',
+            'white-space': 'nowrap',
+            'min-width': '0',
+          }}
+        >
+          {abbreviateHomePath(props.task.worktreePath)}
+        </span>
       </button>
       <Show when={props.task.externalWorktree}>
         <span

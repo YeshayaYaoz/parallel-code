@@ -82,6 +82,7 @@ import { isMac, mod } from './lib/platform';
 import { createCtrlWheelZoomHandler } from './lib/wheelZoom';
 import { redrawAllTerminals } from './lib/terminalFitManager';
 import { ArenaOverlay } from './arena/ArenaOverlay';
+import { resetForNewMatch } from './arena/store';
 import { startDesktopNotificationWatcher } from './store/desktopNotifications';
 import { startPrChecksSubscription } from './store/pr-checks';
 import { startUpdateSubscription } from './store/updates';
@@ -144,6 +145,11 @@ function App() {
   const [windowMaximized, setWindowMaximized] = createSignal(false);
   const [showDropOverlay, setShowDropOverlay] = createSignal(false);
   let dragCounter = 0;
+
+  function closeArena() {
+    void resetForNewMatch();
+    toggleArena(false);
+  }
 
   function extractGitHubUrl(dt: DataTransfer): string | null {
     const uriList = dt.getData('text/uri-list');
@@ -682,7 +688,10 @@ function App() {
       toggleHelp: () => toggleHelpDialog(),
       toggleSettings: () => toggleSettingsDialog(),
       closeDialogs: () => {
-        if (store.showArena) return;
+        if (store.showArena) {
+          closeArena();
+          return;
+        }
         if (store.showHelpDialog) {
           toggleHelpDialog(false);
           return;
@@ -933,7 +942,7 @@ function App() {
           onClose={() => toggleSettingsDialog(false)}
         />
         <Show when={store.showArena}>
-          <ArenaOverlay onClose={() => toggleArena(false)} />
+          <ArenaOverlay onClose={closeArena} />
         </Show>
         <Show when={showDropOverlay()}>
           <DropOverlay />

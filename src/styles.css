@@ -1360,7 +1360,6 @@ textarea::placeholder {
 
 .dialog-overlay {
   animation: fadeIn 0.16s ease;
-  background: color-mix(in srgb, #000 44%, transparent);
   backdrop-filter: saturate(1.15);
 }
 
