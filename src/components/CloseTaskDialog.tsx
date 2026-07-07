@@ -152,6 +152,9 @@ export function CloseTaskDialog(props: CloseTaskDialogProps) {
       confirmDisabled={confirmWaitingForStatus()}
       confirmLoading={confirmWaitingForStatus()}
       danger={props.task.gitIsolation === 'worktree' && !props.task.externalWorktree}
+      // Don't allow deleting before the dirty-worktree check resolves — the
+      // uncommitted/unmerged warnings above only render once it has.
+      confirmDisabled={worktreeStatus.loading}
       onConfirm={() => {
         props.onDone();
         closeTask(props.task.id);
