@@ -10,6 +10,7 @@ import {
 } from 'solid-js';
 import { Dialog } from './Dialog';
 import { FolderIcon, GitBranchIcon } from './icons';
+import { ConfirmDialog } from './ConfirmDialog';
 import { errMessage } from '../lib/log';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
@@ -63,6 +64,10 @@ interface NewTaskDialogProps {
 
 export function NewTaskDialog(props: NewTaskDialogProps) {
   const [prompt, setPrompt] = createSignal('');
+  // Prompt value right after open/prefill — closing is only guarded when the
+  // user has typed something beyond it.
+  const [initialPrompt, setInitialPrompt] = createSignal('');
+  const [confirmDiscard, setConfirmDiscard] = createSignal(false);
   const [name, setName] = createSignal('');
   const [selectedAgent, setSelectedAgent] = createSignal<AgentDef | null>(null);
   const [selectedProjectId, setSelectedProjectId] = createSignal<string | null>(null);
@@ -188,6 +193,8 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
 
     // Reset signals for a fresh dialog
     setPrompt('');
+    setInitialPrompt('');
+    setConfirmDiscard(false);
     setName('');
     setError('');
     setLoading(false);
@@ -230,6 +237,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
         setName('Compare arena results');
         if (prefill.projectId) setSelectedProjectId(prefill.projectId);
       }
+      setInitialPrompt(prompt());
 
       promptRef?.focus();
     })();
@@ -675,10 +683,20 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
     }
   }
 
+  // Guard against a misclick on the overlay (or Escape/Cancel) silently
+  // discarding a typed prompt — state is reset on next open.
+  function requestClose() {
+    if (prompt().trim() !== initialPrompt().trim()) {
+      setConfirmDiscard(true);
+    } else {
+      props.onClose();
+    }
+  }
+
   return (
     <Dialog
       open={props.open}
-      onClose={props.onClose}
+      onClose={requestClose}
       width={store.availableAgents.length > 8 ? 'min(840px, calc(100vw - 48px))' : '560px'}
       labelledBy={titleId}
       panelStyle={{ padding: '0', overflow: 'hidden', gap: '0' }}
@@ -1360,7 +1378,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
           <button
             type="button"
             class="btn-secondary"
-            onClick={() => props.onClose()}
+            onClick={() => requestClose()}
             style={{
               padding: '9px 18px',
               background: theme.bgInput,
@@ -1399,6 +1417,21 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
           </button>
         </div>
       </form>
+      <ConfirmDialog
+        open={confirmDiscard()}
+        title="Discard draft?"
+        message="Closing will discard the prompt you typed."
+        confirmLabel="Discard"
+        danger
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          props.onClose();
+        }}
+        onCancel={() => {
+          setConfirmDiscard(false);
+          promptRef?.focus();
+        }}
+      />
     </Dialog>
   );
 }
