@@ -7,6 +7,7 @@ import { StatusDot } from './StatusDot';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { Dialog } from './Dialog';
+import { CheckIcon, CloseIcon } from './icons';
 
 interface SubTaskStripProps {
   coordinatorTaskId: string;
@@ -58,7 +59,7 @@ function MCPLogModal(props: { onClose: () => void }) {
           }}
           onClick={() => props.onClose()}
         >
-          ✕
+          <CloseIcon size={14} />
         </button>
       </div>
       <div
@@ -216,7 +217,11 @@ export function SubTaskStrip(props: SubTaskStripProps) {
                   when={taskTone(task)}
                   fallback={<StatusDot status={getTaskDotStatus(task.id)} size="sm" />}
                 >
-                  {(tone) => <span style={{ color: tone().color, 'font-size': sf(10) }}>✓</span>}
+                  {(tone) => (
+                    <span style={{ color: tone().color, display: 'inline-flex' }}>
+                      <CheckIcon size={10} />
+                    </span>
+                  )}
                 </Show>
                 <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis' }}>{task.name}</span>
               </button>

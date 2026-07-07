@@ -9,6 +9,7 @@ import {
   untrack,
 } from 'solid-js';
 import { Dialog } from './Dialog';
+import { FolderIcon, GitBranchIcon } from './icons';
 import { errMessage } from '../lib/log';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
@@ -807,27 +808,11 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                 }}
               >
                 <span style={{ display: 'flex', 'align-items': 'center', gap: '6px' }}>
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    style={{ 'flex-shrink': '0' }}
-                  >
-                    <path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6.25 7.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 7.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm0 0h5.5a2.5 2.5 0 0 0 2.5-2.5v-.5a.75.75 0 0 0-1.5 0v.5a1 1 0 0 1-1 1H5a3.25 3.25 0 1 0 0 6.5h6.25a.75.75 0 0 0 0-1.5H5a1.75 1.75 0 1 1 0-3.5Z" />
-                  </svg>
+                  <GitBranchIcon size={11} style={{ 'flex-shrink': '0' }} />
                   main branch (detected on create)
                 </span>
                 <span style={{ display: 'flex', 'align-items': 'center', gap: '6px' }}>
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    style={{ 'flex-shrink': '0' }}
-                  >
-                    <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
-                  </svg>
+                  <FolderIcon size={11} style={{ 'flex-shrink': '0' }} />
                   {selectedProjectPath()}
                 </span>
               </div>
@@ -1090,7 +1075,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                         gap: '4px',
                       }}
                     >
-                      <span aria-hidden="true">📁</span>
+                      <FolderIcon size={12} />
                       Using project Dockerfile:{' '}
                       <code style={{ 'font-family': "'JetBrains Mono', monospace" }}>
                         {PROJECT_DOCKERFILE_RELATIVE_PATH}
