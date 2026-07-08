@@ -1691,25 +1691,14 @@ export function registerAllHandlers(win: BrowserWindow): void {
       // Build mcpConfig and mergedMcpJson (pure computation — no filesystem or state side effects).
       // Doing this before any Docker copy or coordinator mutation ensures that if .mcp.json
       // merge logic ever grows fallible, Docker residue is never left behind.
-      const mcpConfig = {
-        mcpServers: {
-          'parallel-code': {
-            type: 'stdio' as const,
-            command: 'node',
-            args: [
-              mcpServerPath,
-              '--url',
-              serverUrl,
-              '--coordinator-id',
-              args.coordinatorTaskId,
-              ...(args.skipPermissions && args.propagateSkipPermissions
-                ? ['--skip-permissions']
-                : []),
-            ],
-            env: { PARALLEL_CODE_MCP_TOKEN: remoteServer.token },
-          },
-        },
-      };
+      const mcpConfig = buildCoordinatorMCPConfig({
+        mcpServerPath,
+        serverUrl,
+        token: remoteServer.token,
+        coordinatorTaskId: args.coordinatorTaskId,
+        skipPermissions: args.skipPermissions,
+        propagateSkipPermissions: args.propagateSkipPermissions,
+      });
 
       const configJson = JSON.stringify(mcpConfig, null, 2);
 
