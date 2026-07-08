@@ -64,9 +64,10 @@ interface NewTaskDialogProps {
 
 export function NewTaskDialog(props: NewTaskDialogProps) {
   const [prompt, setPrompt] = createSignal('');
-  // Prompt value right after open/prefill — closing is only guarded when the
-  // user has typed something beyond it.
+  // Prompt/name values right after open/prefill — closing is only guarded when
+  // the user has typed something beyond them.
   const [initialPrompt, setInitialPrompt] = createSignal('');
+  const [initialName, setInitialName] = createSignal('');
   const [confirmDiscard, setConfirmDiscard] = createSignal(false);
   const [name, setName] = createSignal('');
   const [selectedAgent, setSelectedAgent] = createSignal<AgentDef | null>(null);
@@ -194,6 +195,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
     // Reset signals for a fresh dialog
     setPrompt('');
     setInitialPrompt('');
+    setInitialName('');
     setConfirmDiscard(false);
     setName('');
     setError('');
@@ -238,6 +240,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
         if (prefill.projectId) setSelectedProjectId(prefill.projectId);
       }
       setInitialPrompt(prompt());
+      setInitialName(name());
 
       promptRef?.focus();
     })();
@@ -684,9 +687,11 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
   }
 
   // Guard against a misclick on the overlay (or Escape/Cancel) silently
-  // discarding a typed prompt — state is reset on next open.
+  // discarding a typed prompt or task name — state is reset on next open.
   function requestClose() {
-    if (prompt().trim() !== initialPrompt().trim()) {
+    const dirty =
+      prompt().trim() !== initialPrompt().trim() || name().trim() !== initialName().trim();
+    if (dirty) {
       setConfirmDiscard(true);
     } else {
       props.onClose();
@@ -1420,7 +1425,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
       <ConfirmDialog
         open={confirmDiscard()}
         title="Discard draft?"
-        message="Closing will discard the prompt you typed."
+        message="Closing will discard what you typed."
         confirmLabel="Discard"
         danger
         onConfirm={() => {
