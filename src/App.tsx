@@ -24,7 +24,6 @@ import { HelpDialog } from './components/HelpDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { FocusModeTaskIndicators } from './components/FocusModeTaskIndicators';
-import { WindowResizeHandles } from './components/WindowResizeHandles';
 import { theme } from './lib/theme';
 import * as log from './lib/log';
 import {
@@ -325,17 +324,6 @@ function App() {
   });
 
   onMount(async () => {
-    if (isMac) {
-      await appWindow.setTitleBarStyle('overlay').catch((error) => {
-        console.warn('Failed to enable macOS overlay titlebar', error);
-      });
-    } else {
-      // Keep native titlebar on macOS, use custom frameless chrome elsewhere.
-      await appWindow.setDecorations(false).catch((error) => {
-        console.warn('Failed to disable native decorations', error);
-      });
-    }
-
     void syncWindowFocused();
     void syncWindowMaximized();
 
@@ -933,9 +921,6 @@ function App() {
             onClose={() => toggleNewTaskDialog(false)}
           />
         </main>
-        <Show when={!isMac}>
-          <WindowResizeHandles />
-        </Show>
         <HelpDialog open={store.showHelpDialog} onClose={() => toggleHelpDialog(false)} />
         <SettingsDialog
           open={store.showSettingsDialog}

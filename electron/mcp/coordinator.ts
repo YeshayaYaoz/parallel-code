@@ -53,7 +53,7 @@ import {
   chunkContainsAgentPrompt,
   getAgentPromptReadiness,
   AGENT_READY_TAIL_CHARS,
-} from './prompt-detect.js';
+} from '../shared/prompt-detect.js';
 import { SUB_TASK_PREAMBLE } from './sub-task-preamble.js';
 import { info as logInfo, warn as logWarn } from '../log.js';
 import type {

@@ -1,4 +1,5 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, For, Show } from 'solid-js';
+import type { JSX } from 'solid-js';
 import { errMessage } from '../lib/log';
 import {
   store,
@@ -110,6 +111,93 @@ function CoordinatorIcon() {
     >
       <path d="M8 1a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V6h3a2 2 0 0 1 2 2v1.27A2 2 0 0 1 15 11a2 2 0 0 1-3 1.73V11a1 1 0 0 0-1-1H9v2.27A2 2 0 0 1 10 14a2 2 0 0 1-4 0c0-.74.4-1.39 1-1.73V10H5a1 1 0 0 0-1 1v1.73A2 2 0 0 1 5 14a2 2 0 0 1-4 0c0-.74.4-1.39 1-1.73V11a2 2 0 0 1-1-1.73V8a2 2 0 0 1 2-2h3V4.73A2 2 0 0 1 6 3a2 2 0 0 1 2-2Z" />
     </svg>
+  );
+}
+
+function DirectBranchBadge(props: { branchName: string }) {
+  return (
+    <span
+      style={{
+        'font-size': sf(10),
+        'font-weight': '600',
+        padding: '1px 5px',
+        'border-radius': '3px',
+        background: `color-mix(in srgb, ${theme.warning} 12%, transparent)`,
+        color: theme.warning,
+        'flex-shrink': '0',
+        'line-height': '1.5',
+      }}
+    >
+      {props.branchName}
+    </span>
+  );
+}
+
+function taskAttentionStyles(
+  taskId: string,
+  offscreenAttention: ReturnType<typeof createOffscreenAttentionState>,
+): Pick<JSX.CSSProperties, 'background' | 'border' | 'color' | 'font-weight'> {
+  const activeOrAttention = store.activeTaskId === taskId || offscreenAttention.hasAttention();
+  return {
+    background: offscreenAttention.hasAttention()
+      ? `color-mix(in srgb, ${offscreenAttention.color()} 10%, transparent)`
+      : 'transparent',
+    color: activeOrAttention ? theme.fg : theme.fgMuted,
+    'font-weight': activeOrAttention ? '500' : '400',
+    border:
+      store.sidebarFocused && store.sidebarFocusedTaskId === taskId
+        ? `1.5px solid var(--border-focus)`
+        : offscreenAttention.hasAttention()
+          ? `1.5px solid color-mix(in srgb, ${offscreenAttention.color()} 38%, transparent)`
+          : '1.5px solid transparent',
+  };
+}
+
+function TaskRowShell(props: {
+  taskId: string;
+  class: string;
+  taskIndex?: number;
+  sidebarTaskId?: string;
+  role?: JSX.HTMLAttributes<HTMLDivElement>['role'];
+  tabIndex?: number;
+  title?: string;
+  onClick: () => void;
+  onKeyDown?: (event: KeyboardEvent) => void;
+  paddingLeft?: string;
+  fontSize: string;
+  cursor: string;
+  opacity: string;
+  style?: JSX.CSSProperties;
+  children: JSX.Element;
+}) {
+  return (
+    <div
+      class={props.class}
+      role={props.role}
+      tabIndex={props.tabIndex}
+      data-task-index={props.taskIndex}
+      data-sidebar-task-id={props.sidebarTaskId}
+      title={props.title}
+      onClick={() => props.onClick()}
+      onKeyDown={(event) => props.onKeyDown?.(event)}
+      style={{
+        padding: '7px 10px',
+        'padding-left': props.paddingLeft ?? '10px',
+        'border-radius': '6px',
+        'font-size': props.fontSize,
+        cursor: props.cursor,
+        'white-space': 'nowrap',
+        overflow: 'hidden',
+        'text-overflow': 'ellipsis',
+        opacity: props.opacity,
+        display: 'flex',
+        'flex-direction': 'column',
+        gap: '1px',
+        ...props.style,
+      }}
+    >
+      {props.children}
+    </div>
   );
 }
 
@@ -918,9 +1006,10 @@ function CoordinatorFolder(props: TaskEntryProps) {
             <div class="drop-indicator" />
           </Show>
           {/* Coordinator row */}
-          <div
+          <TaskRowShell
+            taskId={props.taskId}
             class={`task-item${t().closingStatus === 'removing' ? ' task-item-removing' : ' task-item-appearing'}`}
-            data-task-index={idx()}
+            taskIndex={idx()}
             title={getDotTooltip(
               getTaskDotStatus(props.taskId),
               getTaskAttentionState(props.taskId),
@@ -929,36 +1018,10 @@ function CoordinatorFolder(props: TaskEntryProps) {
               setActiveTask(props.taskId);
               focusSidebar();
             }}
-            style={{
-              padding: '7px 10px',
-              'border-radius': '6px',
-              background: offscreenAttention.hasAttention()
-                ? `color-mix(in srgb, ${offscreenAttention.color()} 10%, transparent)`
-                : 'transparent',
-              color:
-                store.activeTaskId === props.taskId || offscreenAttention.hasAttention()
-                  ? theme.fg
-                  : theme.fgMuted,
-              'font-size': sf(13),
-              'font-weight':
-                store.activeTaskId === props.taskId || offscreenAttention.hasAttention()
-                  ? '500'
-                  : '400',
-              cursor: props.dragFromIndex() !== null ? 'grabbing' : 'pointer',
-              'white-space': 'nowrap',
-              overflow: 'hidden',
-              'text-overflow': 'ellipsis',
-              opacity: props.dragFromIndex() === idx() ? '0.4' : '1',
-              display: 'flex',
-              'flex-direction': 'column',
-              gap: '1px',
-              border:
-                store.sidebarFocused && store.sidebarFocusedTaskId === props.taskId
-                  ? `1.5px solid var(--border-focus)`
-                  : offscreenAttention.hasAttention()
-                    ? `1.5px solid color-mix(in srgb, ${offscreenAttention.color()} 38%, transparent)`
-                    : '1.5px solid transparent',
-            }}
+            fontSize={sf(13)}
+            cursor={props.dragFromIndex() !== null ? 'grabbing' : 'pointer'}
+            opacity={props.dragFromIndex() === idx() ? '0.4' : '1'}
+            style={taskAttentionStyles(props.taskId, offscreenAttention)}
           >
             <div style={{ display: 'flex', 'align-items': 'center', gap: '6px' }}>
               <CoordinatorIcon />
@@ -982,7 +1045,7 @@ function CoordinatorFolder(props: TaskEntryProps) {
                 </span>
               </Show>
             </div>
-          </div>
+          </TaskRowShell>
 
           {/* Indented active children */}
           <For each={children().active}>
@@ -1022,11 +1085,12 @@ function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordin
     <Show when={task()}>
       {(t) => (
         <>
-          <div
+          <TaskRowShell
+            taskId={props.taskId}
             class="task-item task-item-appearing"
             role="button"
             tabIndex={0}
-            data-sidebar-task-id={props.taskId}
+            sidebarTaskId={props.taskId}
             onClick={() => {
               if (props.coordinatorId) {
                 uncollapseTask(props.coordinatorId);
@@ -1047,22 +1111,14 @@ function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordin
               }
             }}
             title="Click to restore"
+            paddingLeft={props.indented ? '22px' : '10px'}
+            fontSize={sf(12)}
+            cursor="pointer"
+            opacity="0.6"
             style={{
-              padding: '7px 10px',
-              'padding-left': props.indented ? '22px' : '10px',
-              'border-radius': '6px',
               background: 'transparent',
               color: theme.fgSubtle,
-              'font-size': sf(12),
               'font-weight': '400',
-              cursor: 'pointer',
-              'white-space': 'nowrap',
-              overflow: 'hidden',
-              'text-overflow': 'ellipsis',
-              opacity: '0.6',
-              display: 'flex',
-              'flex-direction': 'column',
-              gap: '1px',
               border:
                 store.sidebarFocused && store.sidebarFocusedTaskId === props.taskId
                   ? `1.5px solid var(--border-focus)`
@@ -1079,20 +1135,7 @@ function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordin
                 attention={getTaskAttentionState(props.taskId)}
               />
               <Show when={t().gitIsolation === 'direct'}>
-                <span
-                  style={{
-                    'font-size': sf(10),
-                    'font-weight': '600',
-                    padding: '1px 5px',
-                    'border-radius': '3px',
-                    background: `color-mix(in srgb, ${theme.warning} 12%, transparent)`,
-                    color: theme.warning,
-                    'flex-shrink': '0',
-                    'line-height': '1.5',
-                  }}
-                >
-                  {t().branchName}
-                </span>
+                <DirectBranchBadge branchName={t().branchName} />
               </Show>
               <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis' }}>{t().name}</span>
               <Show when={isCoordinator() && childCount() > 0}>
@@ -1107,7 +1150,7 @@ function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordin
                 </span>
               </Show>
             </div>
-          </div>
+          </TaskRowShell>
 
           {/* If collapsed coordinator, still show children nested */}
           <Show when={isCoordinator()}>
@@ -1149,9 +1192,10 @@ function TaskRow(props: TaskRowProps) {
           <Show when={!props.indented && props.dropTargetIndex() === idx()}>
             <div class="drop-indicator" />
           </Show>
-          <div
+          <TaskRowShell
+            taskId={props.taskId}
             class={`task-item${t().closingStatus === 'removing' ? ' task-item-removing' : ' task-item-appearing'}`}
-            data-task-index={props.indented ? undefined : idx()}
+            taskIndex={props.indented ? undefined : idx()}
             title={getDotTooltip(
               getTaskDotStatus(props.taskId),
               getTaskAttentionState(props.taskId),
@@ -1160,41 +1204,13 @@ function TaskRow(props: TaskRowProps) {
               setActiveTask(props.taskId);
               focusSidebar();
             }}
-            style={{
-              padding: '7px 10px',
-              'padding-left': props.indented ? '22px' : '10px',
-              'border-radius': '6px',
-              background: offscreenAttention.hasAttention()
-                ? `color-mix(in srgb, ${offscreenAttention.color()} 10%, transparent)`
-                : 'transparent',
-              color:
-                store.activeTaskId === props.taskId || offscreenAttention.hasAttention()
-                  ? theme.fg
-                  : theme.fgMuted,
-              'font-size': sf(12),
-              'font-weight':
-                store.activeTaskId === props.taskId || offscreenAttention.hasAttention()
-                  ? '500'
-                  : '400',
-              cursor: props.indented
-                ? 'pointer'
-                : props.dragFromIndex() !== null
-                  ? 'grabbing'
-                  : 'pointer',
-              'white-space': 'nowrap',
-              overflow: 'hidden',
-              'text-overflow': 'ellipsis',
-              opacity: !props.indented && props.dragFromIndex() === idx() ? '0.4' : '1',
-              display: 'flex',
-              'flex-direction': 'column',
-              gap: '1px',
-              border:
-                store.sidebarFocused && store.sidebarFocusedTaskId === props.taskId
-                  ? `1.5px solid var(--border-focus)`
-                  : offscreenAttention.hasAttention()
-                    ? `1.5px solid color-mix(in srgb, ${offscreenAttention.color()} 38%, transparent)`
-                    : '1.5px solid transparent',
-            }}
+            paddingLeft={props.indented ? '22px' : '10px'}
+            fontSize={sf(12)}
+            cursor={
+              props.indented ? 'pointer' : props.dragFromIndex() !== null ? 'grabbing' : 'pointer'
+            }
+            opacity={!props.indented && props.dragFromIndex() === idx() ? '0.4' : '1'}
+            style={taskAttentionStyles(props.taskId, offscreenAttention)}
           >
             <div style={{ display: 'flex', 'align-items': 'center', gap: '6px' }}>
               <StatusDot
@@ -1203,20 +1219,7 @@ function TaskRow(props: TaskRowProps) {
                 attention={getTaskAttentionState(props.taskId)}
               />
               <Show when={t().gitIsolation === 'direct'}>
-                <span
-                  style={{
-                    'font-size': sf(10),
-                    'font-weight': '600',
-                    padding: '1px 5px',
-                    'border-radius': '3px',
-                    background: `color-mix(in srgb, ${theme.warning} 12%, transparent)`,
-                    color: theme.warning,
-                    'flex-shrink': '0',
-                    'line-height': '1.5',
-                  }}
-                >
-                  {t().branchName}
-                </span>
+                <DirectBranchBadge branchName={t().branchName} />
               </Show>
               <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis' }}>{t().name}</span>
               <Show when={offscreenAttention.label()}>
@@ -1236,7 +1239,7 @@ function TaskRow(props: TaskRowProps) {
                 )}
               </Show>
             </div>
-          </div>
+          </TaskRowShell>
         </>
       )}
     </Show>

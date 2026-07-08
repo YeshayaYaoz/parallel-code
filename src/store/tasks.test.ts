@@ -151,6 +151,8 @@ import {
   retryTaskMcpStartup,
   clearTaskLandingReview,
   updateTaskBranch,
+  createAgentRecord,
+  selectActiveNeighborAfterRemoval,
 } from './tasks';
 import { getCoordinatorChildren } from './sidebar-order';
 import { recordMergedLines, recordTaskMerged } from './completion';
@@ -166,6 +168,63 @@ const taskCreatedHandler = ipcHandlers.get('mcp_task_created');
 if (!taskCreatedHandler) throw new Error('mcp_task_created handler not registered');
 const taskStateSyncHandler = ipcHandlers.get('mcp_task_state_sync');
 if (!taskStateSyncHandler) throw new Error('mcp_task_state_sync handler not registered');
+
+describe('task record helpers', () => {
+  const agentDef = {
+    id: 'agent-def',
+    name: 'Claude',
+    command: 'claude',
+    args: [],
+    resume_args: [],
+    skip_permissions_args: [],
+    description: 'Claude',
+  };
+
+  it('creates running agent records with default state', () => {
+    expect(createAgentRecord({ id: 'agent-1', taskId: 'task-1', def: agentDef })).toEqual({
+      id: 'agent-1',
+      taskId: 'task-1',
+      def: agentDef,
+      resumed: false,
+      status: 'running',
+      exitCode: null,
+      signal: null,
+      lastOutput: [],
+      generation: 0,
+      attachExisting: undefined,
+      spawnDelayMs: undefined,
+    });
+  });
+
+  it('preserves resume and attachment metadata on agent records', () => {
+    expect(
+      createAgentRecord({
+        id: 'agent-1',
+        taskId: 'task-1',
+        def: agentDef,
+        resumed: true,
+        attachExisting: true,
+        spawnDelayMs: 250,
+      }),
+    ).toMatchObject({
+      resumed: true,
+      attachExisting: true,
+      spawnDelayMs: 250,
+    });
+  });
+
+  it.each([
+    { order: ['task-1', 'task-2', 'task-3'], removedTaskId: 'task-1', expected: 'task-2' },
+    { order: ['task-1', 'task-2', 'task-3'], removedTaskId: 'task-2', expected: 'task-1' },
+    { order: ['task-1', 'task-2', 'task-3'], removedTaskId: 'task-3', expected: 'task-2' },
+    { order: ['task-1'], removedTaskId: 'task-1', expected: null },
+  ])(
+    'selects $expected after removing $removedTaskId from $order',
+    ({ order, removedTaskId, expected }) => {
+      expect(selectActiveNeighborAfterRemoval(order, removedTaskId)).toBe(expected);
+    },
+  );
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

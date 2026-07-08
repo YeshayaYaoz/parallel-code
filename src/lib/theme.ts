@@ -62,7 +62,7 @@ export const terminalBackground: Record<LookPreset, string> = {
 // for light terminal backgrounds, so colored output (claude prompts,
 // ls --color, git status) stays legible on white. Shared by the built-in
 // islands-light preset and any custom theme with a light background.
-const LIGHT_TERMINAL_PALETTE = {
+export const LIGHT_TERMINAL_THEME = {
   foreground: '#1f2329',
   cursor: '#1f2329',
   cursorAccent: '#ffffff',
@@ -92,7 +92,7 @@ const LIGHT_TERMINAL_PALETTE = {
  */
 export function getTerminalTheme(preset: LookPreset) {
   if (preset === 'islands-light') {
-    return { background: '#ffffff', ...LIGHT_TERMINAL_PALETTE };
+    return { background: '#ffffff', ...LIGHT_TERMINAL_THEME };
   }
   return {
     background: terminalBackground[preset],
@@ -148,7 +148,7 @@ export function getTerminalThemeForCustom(bg: string) {
   })();
 
   if (isLight) {
-    return { background: bg, ...LIGHT_TERMINAL_PALETTE };
+    return { background: bg, ...LIGHT_TERMINAL_THEME };
   }
   return { background: bg };
 }

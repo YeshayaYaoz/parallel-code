@@ -482,10 +482,6 @@ function DiffViewerContent(props: DiffViewerDialogProps) {
               worktreePath={props.worktreePath}
               baseBranch={props.baseBranch}
               searchQuery={searchQuery()}
-              reviewAnnotations={review.annotations()}
-              onAnnotationAdd={review.addAnnotation}
-              onAnnotationDismiss={review.dismissAnnotation}
-              onAnnotationUpdate={review.updateAnnotation}
               scrollToAnnotation={review.scrollTarget()}
               onScrollRef={(el) => {
                 diffScrollRef = el;

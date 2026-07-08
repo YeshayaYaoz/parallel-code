@@ -53,6 +53,34 @@ function isAllowedCssValue(varName: string, value: string): boolean {
   return true;
 }
 
+export function isHexTerminalBackground(value: string): boolean {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.trim());
+}
+
+export function collectAllowedVars(
+  entries: Iterable<[string, unknown]>,
+  options?: { validateValues?: boolean },
+): Partial<Record<CssVar, string>> {
+  const vars: Partial<Record<CssVar, string>> = {};
+  for (const [key, value] of entries) {
+    if (!CSS_VAR_SET.has(key) || typeof value !== 'string') continue;
+    if (options?.validateValues && !isAllowedCssValue(key, value)) continue;
+    vars[key as CssVar] = value;
+  }
+  return vars;
+}
+
+export function formatVarLines(
+  vars: Partial<Record<CssVar, string>>,
+  options?: { ordered?: boolean },
+): string {
+  const entries =
+    options?.ordered === false
+      ? Object.entries(vars)
+      : CSS_VARS.filter((v) => v in vars).map((v) => [v, vars[v]] as const);
+  return entries.map(([k, v]) => `  ${k}: ${v};`).join('\n');
+}
+
 const CSS_VAR_DESCRIPTIONS: Record<CssVar, string> = {
   '--bg':
     'App-wide page background. Can be a hex color or CSS gradient (e.g. radial-gradient(130% 120% at 18% 0%, #202044 0%, #171c30 58%, #12151f 100%))',
@@ -98,18 +126,13 @@ export function validateCustomTheme(input: unknown): Omit<CustomTheme, 'id'> {
     throw new Error('"vars" must be a mapping of CSS variable names to values');
 
   const rawVars = obj['vars'] as Record<string, unknown>;
-  const vars: Partial<Record<CssVar, string>> = {};
-  for (const [key, value] of Object.entries(rawVars)) {
-    if (CSS_VAR_SET.has(key) && typeof value === 'string') {
-      vars[key as CssVar] = value;
-    }
-  }
+  const vars = collectAllowedVars(Object.entries(rawVars));
 
   if (Object.keys(vars).length === 0)
     throw new Error('"vars" must contain at least one recognized CSS variable');
 
   const terminalBackground = (obj['terminalBackground'] as string).trim();
-  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(terminalBackground))
+  if (!isHexTerminalBackground(terminalBackground))
     throw new Error('"terminalBackground" must be a 3- or 6-digit hex color (e.g. #1a1a2e)');
 
   const description = typeof obj['description'] === 'string' ? obj['description'].trim() : '';
@@ -195,9 +218,7 @@ export function parseThemeCss(cssString: string): Omit<CustomTheme, 'id'> {
     while ((declMatch = declRe.exec(blockContent)) !== null) {
       const key = declMatch[1];
       const value = declMatch[2].trim();
-      if (CSS_VAR_SET.has(key) && value && isAllowedCssValue(key, value)) {
-        vars[key as CssVar] = value;
-      }
+      Object.assign(vars, collectAllowedVars([[key, value]], { validateValues: true }));
     }
     // Advance rootStartRe past the block we just processed
     rootStartRe.lastIndex = i;
@@ -209,7 +230,7 @@ export function parseThemeCss(cssString: string): Omit<CustomTheme, 'id'> {
     );
   }
 
-  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(terminalBackground)) {
+  if (!isHexTerminalBackground(terminalBackground)) {
     throw new Error(
       '"terminalBackground" must be a 3- or 6-digit hex color (e.g. #1a1a2e) — rgb(), hsl(), and gradients are not allowed',
     );
@@ -237,9 +258,7 @@ export function themeToCss(
   terminalBackground: string,
   vars: Partial<Record<CssVar, string>>,
 ): string {
-  const varLines = CSS_VARS.filter((v) => v in vars)
-    .map((v) => `  ${v}: ${vars[v]};`)
-    .join('\n');
+  const varLines = formatVarLines(vars);
   const descLine = description ? `\n  description: ${description}` : '';
   return `/*\n  name: ${name}${descLine}\n  terminalBackground: ${terminalBackground}\n*/\n\n:root {\n${varLines}\n}\n`;
 }
@@ -247,7 +266,7 @@ export function themeToCss(
 export function buildCustomThemeCss(theme: CustomTheme): string {
   const entries = Object.entries(theme.vars);
   if (entries.length === 0) return '';
-  const body = entries.map(([k, v]) => `  ${k}: ${v};`).join('\n');
+  const body = formatVarLines(theme.vars, { ordered: false });
   return `html[data-custom-theme='${theme.id}'] {\n${body}\n}`;
 }
 

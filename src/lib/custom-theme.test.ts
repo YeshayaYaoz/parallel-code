@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { parseThemeCss, buildCustomThemeCss, themeToCss, detectThemeTone } from './custom-theme';
+import {
+  parseThemeCss,
+  buildCustomThemeCss,
+  themeToCss,
+  detectThemeTone,
+  collectAllowedVars,
+  formatVarLines,
+  isHexTerminalBackground,
+} from './custom-theme';
 
 describe('parseThemeCss', () => {
   it('parses a valid CSS theme with header comment', () => {
@@ -136,6 +144,42 @@ describe('themeToCss', () => {
     expect(parsed.description).toBe('A moody dark theme');
     expect(parsed.terminalBackground).toBe('#1a1a2e');
     expect(parsed.vars['--bg']).toBe('#0f0e17');
+  });
+});
+
+describe('custom theme helper primitives', () => {
+  it('recognizes only opaque 3- or 6-digit hex terminal backgrounds', () => {
+    expect(isHexTerminalBackground('#000')).toBe(true);
+    expect(isHexTerminalBackground('#1a2B3c')).toBe(true);
+    expect(isHexTerminalBackground(' #fff ')).toBe(true);
+    expect(isHexTerminalBackground('#abcd')).toBe(false);
+    expect(isHexTerminalBackground('rgb(0,0,0)')).toBe(false);
+  });
+
+  it('collects recognized string CSS variables and ignores unknown or non-string entries', () => {
+    expect(
+      collectAllowedVars([
+        ['--bg', '#000'],
+        ['--unknown', '#fff'],
+        ['--fg', 123],
+      ]),
+    ).toEqual({ '--bg': '#000' });
+  });
+
+  it('can apply CSS value validation when collecting parser declarations', () => {
+    expect(
+      collectAllowedVars(
+        [
+          ['--bg', 'url("https://example.com/bg.png")'],
+          ['--fg', '#fff'],
+        ],
+        { validateValues: true },
+      ),
+    ).toEqual({ '--fg': '#fff' });
+  });
+
+  it('formats variable lines in supported CSS variable order by default', () => {
+    expect(formatVarLines({ '--fg': '#fff', '--bg': '#000' })).toBe('  --bg: #000;\n  --fg: #fff;');
   });
 });
 
