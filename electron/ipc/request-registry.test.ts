@@ -37,6 +37,39 @@ describe('RequestRegistry', () => {
     expect(registry.size).toBe(1);
   });
 
+  it('ignores cleanup from a replaced request', () => {
+    const registry = new RequestRegistry<string>({ maxConcurrent: 1, timeoutMs: 1000 });
+
+    const first = registry.start('same', 'first', vi.fn());
+    const second = registry.start('same', 'second', vi.fn());
+
+    expect(registry.finish(first)).toBeUndefined();
+    expect(registry.has('same')).toBe(true);
+    expect(registry.isCurrent(second)).toBe(true);
+  });
+
+  it('ignores a stale timeout callback after the request id is replaced', () => {
+    vi.useFakeTimers();
+    const registry = new RequestRegistry<{ cancel: () => void }>({
+      maxConcurrent: 1,
+      timeoutMs: 1000,
+    });
+    const firstTimeout = vi.fn();
+    const firstCancel = vi.fn();
+    const secondTimeout = vi.fn();
+    const secondCancel = vi.fn();
+
+    registry.start('same', { cancel: firstCancel }, firstTimeout, (request) => request.cancel());
+    registry.start('same', { cancel: secondCancel }, secondTimeout, (request) => request.cancel());
+    vi.advanceTimersByTime(1000);
+
+    expect(firstTimeout).not.toHaveBeenCalled();
+    expect(firstCancel).toHaveBeenCalledOnce();
+    expect(secondTimeout).toHaveBeenCalledOnce();
+    expect(secondCancel).toHaveBeenCalledOnce();
+    expect(registry.has('same')).toBe(false);
+  });
+
   describe('canStart', () => {
     it('allows starting when below the concurrency limit', () => {
       const registry = new RequestRegistry<string>({ maxConcurrent: 2, timeoutMs: 1000 });
@@ -115,8 +148,8 @@ describe('assertCanStart', () => {
 describe('AskCodeSession', () => {
   it('reports the timeout message exactly once even if completed twice', () => {
     const registry = new RequestRegistry<string>({ maxConcurrent: 5, timeoutMs: 1000 });
-    registry.start('req', 'value', vi.fn());
-    const session = new AskCodeSession(registry, 'req');
+    const handle = registry.start('req', 'value', vi.fn());
+    const session = new AskCodeSession(registry, handle);
     const send = vi.fn();
 
     expect(session.complete()).toBe(true);
@@ -127,8 +160,8 @@ describe('AskCodeSession', () => {
 
   it('sends the timeout error and done messages when not yet completed', () => {
     const registry = new RequestRegistry<string>({ maxConcurrent: 5, timeoutMs: 1000 });
-    registry.start('req', 'value', vi.fn());
-    const session = new AskCodeSession(registry, 'req');
+    const handle = registry.start('req', 'value', vi.fn());
+    const session = new AskCodeSession(registry, handle);
     const send = vi.fn();
 
     session.onTimeout(send);
@@ -143,8 +176,8 @@ describe('AskCodeSession', () => {
 
   it('cleanup releases the registry slot', () => {
     const registry = new RequestRegistry<string>({ maxConcurrent: 1, timeoutMs: 1000 });
-    registry.start('req', 'value', vi.fn());
-    const session = new AskCodeSession(registry, 'req');
+    const handle = registry.start('req', 'value', vi.fn());
+    const session = new AskCodeSession(registry, handle);
 
     session.cleanup();
 

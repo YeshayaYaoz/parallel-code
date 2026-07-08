@@ -5808,10 +5808,15 @@ describe('preload.cjs MCP channel allowlist', () => {
       'mcp_coordinated_task_closed',
     ];
 
-    expect(preload).toContain("require('./ipc/channel-manifest.json')");
     const channels = new Set(Object.values(manifest));
+    const allowlistMatch = /new Set\(\[([\s\S]*?)\]\)/.exec(preload);
+    expect(allowlistMatch).not.toBeNull();
+    const preloadChannels = new Set(
+      [...(allowlistMatch?.[1] ?? '').matchAll(/'([^']+)'/g)].map((match) => match[1]),
+    );
     for (const channel of required) {
       expect(channels.has(channel), `manifest missing channel: ${channel}`).toBe(true);
+      expect(preloadChannels.has(channel), `preload missing channel: ${channel}`).toBe(true);
     }
   });
 });

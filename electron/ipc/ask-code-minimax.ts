@@ -51,13 +51,8 @@ export function askAboutCodeMinimax(win: BrowserWindow, args: MinimaxAskCodeRequ
     }
   };
 
-  const session = new AskCodeSession(activeRequests, requestId);
-
-  activeRequests.start(
-    requestId,
-    controller,
-    () => session.onTimeout(send),
-    (request) => request.abort(),
+  const session = AskCodeSession.start(activeRequests, requestId, controller, send, (request) =>
+    request.abort(),
   );
 
   fetch(MINIMAX_API_URL, {

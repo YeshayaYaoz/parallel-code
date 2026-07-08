@@ -35,6 +35,7 @@ export function askAboutCode(win: BrowserWindow, args: AskCodeRequest): void {
 
   // Route to MiniMax backend when configured
   if (provider === 'minimax') {
+    activeRequests.cancel(requestId);
     askAboutCodeMinimax(win, { requestId, channelId, prompt });
     return;
   }
@@ -85,7 +86,9 @@ export function askAboutCode(win: BrowserWindow, args: AskCodeRequest): void {
     }
   };
 
-  const session = new AskCodeSession(activeRequests, requestId);
+  const session = AskCodeSession.start(activeRequests, requestId, proc, send, (request) =>
+    request.kill('SIGTERM'),
+  );
 
   proc.stdout?.on('data', (chunk: Buffer) => {
     send({ type: 'chunk', text: chunk.toString('utf8') });
@@ -109,19 +112,11 @@ export function askAboutCode(win: BrowserWindow, args: AskCodeRequest): void {
       send({ type: 'done', exitCode: 1 });
     }
   });
-
-  activeRequests.start(
-    requestId,
-    proc,
-    () => session.onTimeout(send),
-    (request) => request.kill('SIGTERM'),
-  );
 }
 
 export function cancelAskAboutCode(requestId: string): void {
   if (isMinimaxRequestActive(requestId)) {
     cancelAskAboutCodeMinimax(requestId);
-    return;
   }
 
   activeRequests.cancel(requestId);
