@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { injectSubTaskPreamble, restoreSubTaskPreambleInjection } from './preamble.js';
@@ -58,6 +58,39 @@ describe('sub-task preamble injection', () => {
       await restoreSubTaskPreambleInjection(injected);
 
       expect(existsSync(settingsPath)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports existing Claude settings content when appending the system prompt', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'parallel-code-preamble-test-'));
+    const settingsDir = join(dir, '.claude');
+    const settingsPath = join(settingsDir, 'settings.local.json');
+    const originalContent = JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }, null, 2);
+    const queue = new Map<string, Promise<void>>();
+    mkdirSync(settingsDir);
+    writeFileSync(settingsPath, originalContent);
+
+    try {
+      const injected = await injectSubTaskPreamble({
+        worktreePath: dir,
+        agentCommand: 'claude',
+        queue,
+      });
+
+      expect(injected).toMatchObject({
+        filePath: settingsPath,
+        originalContent,
+        existedBefore: true,
+        restoreOnFailure: false,
+      });
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+        permissions?: { allow?: string[] };
+        systemPrompt?: string;
+      };
+      expect(settings.permissions?.allow).toEqual(['Bash(npm test)']);
+      expect(settings.systemPrompt).toContain('<sub-task-mode>');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -98,14 +98,12 @@ export async function injectSubTaskPreamble(args: {
   const settingsDir = join(args.worktreePath, '.claude');
   const settingsPath = join(settingsDir, 'settings.local.json');
   await fsMkdir(settingsDir, { recursive: true });
+  let originalContent: string | null = null;
   await queueFileMutation(args.queue, settingsPath, async () => {
     let existingSettings: Record<string, unknown> = {};
     try {
-      await fsAccess(settingsPath);
-      existingSettings = JSON.parse(await fsReadFile(settingsPath, 'utf8')) as Record<
-        string,
-        unknown
-      >;
+      originalContent = await fsReadFile(settingsPath, 'utf8');
+      existingSettings = JSON.parse(originalContent) as Record<string, unknown>;
     } catch {
       existingSettings = {};
     }
@@ -116,8 +114,8 @@ export async function injectSubTaskPreamble(args: {
   });
   return {
     filePath: settingsPath,
-    originalContent: null,
-    existedBefore: false,
+    originalContent,
+    existedBefore: originalContent !== null,
     restoreOnFailure: false,
   };
 }
