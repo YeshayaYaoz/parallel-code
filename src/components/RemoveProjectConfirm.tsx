@@ -1,5 +1,6 @@
 import { ConfirmDialog } from './ConfirmDialog';
 import { store, removeProject, removeProjectWithTasks } from '../store/store';
+import { getProjectTaskCount } from './project-remove-confirmation';
 
 interface RemoveProjectConfirmProps {
   /** Project to remove; null keeps the dialog closed. */
@@ -15,12 +16,7 @@ interface RemoveProjectConfirmProps {
  * entry point so they all warn about the tasks that will be closed.
  */
 export function RemoveProjectConfirm(props: RemoveProjectConfirmProps) {
-  const taskCount = () =>
-    props.projectId
-      ? [...store.taskOrder, ...store.collapsedTaskOrder].filter(
-          (tid) => store.tasks[tid]?.projectId === props.projectId,
-        ).length
-      : 0;
+  const taskCount = () => (props.projectId ? getProjectTaskCount(store, props.projectId) : 0);
 
   return (
     <ConfirmDialog
