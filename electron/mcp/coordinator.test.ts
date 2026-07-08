@@ -5782,7 +5782,17 @@ describe('preload.cjs MCP channel allowlist', () => {
       '..',
       'preload.cjs',
     );
+    const manifestPath = path.join(
+      path.dirname(new URL(import.meta.url).pathname),
+      '..',
+      'ipc',
+      'channel-manifest.json',
+    );
     const preload = readFileSync(preloadPath, 'utf8') as string;
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8') as string) as Record<
+      string,
+      string
+    >;
 
     const required = [
       'mcp_task_created',
@@ -5798,8 +5808,10 @@ describe('preload.cjs MCP channel allowlist', () => {
       'mcp_coordinated_task_closed',
     ];
 
+    expect(preload).toContain("require('./ipc/channel-manifest.json')");
+    const channels = new Set(Object.values(manifest));
     for (const channel of required) {
-      expect(preload, `preload.cjs missing channel: ${channel}`).toContain(`'${channel}'`);
+      expect(channels.has(channel), `manifest missing channel: ${channel}`).toBe(true);
     }
   });
 });

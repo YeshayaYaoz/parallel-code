@@ -1,22 +1,26 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { IPC } from './ipc/channels.js';
 
-// Regression guard: every IPC channel the renderer can invoke must be in
-// preload.cjs ALLOWED_CHANNELS, or `invoke` throws "Blocked IPC channel" at
-// runtime. main.ts only console.warns about drift in dev, so without this
-// test the mismatch ships silently (see commit 08969d3, same bug class).
+const require = createRequire(import.meta.url);
+const IPC_MANIFEST = require('./ipc/channel-manifest.json') as Record<string, string>;
+
 describe('preload ALLOWED_CHANNELS', () => {
   const preloadSrc = readFileSync(join(__dirname, 'preload.cjs'), 'utf8');
-  const hasChannel = (channel: string) =>
-    preloadSrc.includes(`'${channel}'`) || preloadSrc.includes(`"${channel}"`);
 
-  it('lists every channel in the IPC enum', () => {
-    const channels: string[] = Object.values(IPC);
-    const missing = channels.filter((channel) => !hasChannel(channel));
-    expect(missing).toEqual([]);
+  it('uses the shared channel manifest', () => {
+    expect(preloadSrc).toContain("require('./ipc/channel-manifest.json')");
+  });
+
+  it('keeps the manifest and IPC enum as an exact set', () => {
+    const channels = Object.values(IPC);
+    const IPC_CHANNELS = Object.values(IPC_MANIFEST);
+    expect(new Set(IPC_CHANNELS)).toEqual(new Set(channels));
+    expect(IPC_CHANNELS).toHaveLength(channels.length);
+    expect(new Set(IPC_CHANNELS).size).toBe(IPC_CHANNELS.length);
   });
 });

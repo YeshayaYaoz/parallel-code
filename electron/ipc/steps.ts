@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
 import { IPC } from './channels.js';
+import { appendGitInfoExcludeBlock } from './git-exclude.js';
 import {
   debug as logDebug,
   info as logInfo,
@@ -126,45 +127,10 @@ function readStepsFile(stepsFile: string): unknown[] | null {
  * Resolves the path to the git exclude file for a given worktree.
  * For linked worktrees, .git is a file pointing to the actual git dir.
  */
-function getGitExcludePath(worktreePath: string): string | null {
-  const gitPath = path.join(worktreePath, '.git');
-  try {
-    const stat = fs.statSync(gitPath);
-    if (stat.isDirectory()) {
-      return path.join(gitPath, 'info', 'exclude');
-    }
-    // Linked worktree: .git is a file "gitdir: /path/to/.git/worktrees/<name>"
-    const content = fs.readFileSync(gitPath, 'utf-8').trim();
-    const match = /^gitdir: (.+)$/.exec(content);
-    if (!match) return null;
-    return path.join(match[1], 'info', 'exclude');
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Ensures `.claude/steps.json` is excluded from git via the worktree's
- * `.git/info/exclude` (local, never committed) so the file never shows up
- * in the user's diff.
- */
 function ensureStepsIgnored(worktreePath: string): void {
-  const excludePath = getGitExcludePath(worktreePath);
-  if (!excludePath) return;
-  const entry = '.claude/steps.json';
-  try {
-    let content = '';
-    if (fs.existsSync(excludePath)) {
-      content = fs.readFileSync(excludePath, 'utf-8');
-      if (content.split('\n').some((line) => line.trim() === entry)) return;
-    } else {
-      fs.mkdirSync(path.dirname(excludePath), { recursive: true });
-    }
-    const prefix = content.length > 0 && !content.endsWith('\n') ? '\n' : '';
-    fs.appendFileSync(excludePath, `${prefix}${entry}\n`, 'utf-8');
-  } catch (err) {
+  appendGitInfoExcludeBlock(worktreePath, '.claude/steps.json', '.claude/steps.json\n', (err) => {
     logWarn('steps', 'failed to update git exclude', { err: errMessage(err) });
-  }
+  });
 }
 
 /**

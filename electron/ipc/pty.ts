@@ -69,6 +69,36 @@ const BATCH_MAX = 64 * 1024;
 const BATCH_INTERVAL = 8; // ms
 const TAIL_CAP = 8 * 1024;
 const MAX_LINES = 50;
+const ENV_BLOCK_LIST = new Set([
+  'PATH',
+  'HOME',
+  'USER',
+  'SHELL',
+  'LD_PRELOAD',
+  'LD_LIBRARY_PATH',
+  'DYLD_INSERT_LIBRARIES',
+  'NODE_OPTIONS',
+  'ELECTRON_RUN_AS_NODE',
+  'PARALLEL_CODE_MCP_TOKEN',
+]);
+
+export interface SpawnAgentArgs {
+  taskId: string;
+  agentId: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string>;
+  cols: number;
+  rows: number;
+  isShell?: boolean;
+  dockerMode?: boolean;
+  dockerImage?: string;
+  shareDockerAgentAuth?: boolean;
+  attachExisting?: boolean;
+  dockerMountWorktreeParent?: boolean;
+  onOutput: { __CHANNEL_ID__: string };
+}
 
 function redactedSpawnArgs(command: string, args: string[]): string[] {
   if ((command === '/bin/sh' || command.endsWith('/sh')) && args[0] === '-c') {
@@ -140,6 +170,32 @@ export function validateCommand(command: string): void {
   }
 }
 
+function copyProcessEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined) env[k] = v;
+  }
+  return env;
+}
+
+export function buildPtySpawnEnv(rendererEnv: Record<string, string> = {}): Record<string, string> {
+  const spawnEnv: Record<string, string> = {
+    ...copyProcessEnv(),
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+  };
+
+  for (const [key, value] of Object.entries(rendererEnv)) {
+    if (!ENV_BLOCK_LIST.has(key)) spawnEnv[key] = value;
+  }
+
+  delete spawnEnv.CLAUDECODE;
+  delete spawnEnv.CLAUDE_CODE_SESSION;
+  delete spawnEnv.CLAUDE_CODE_ENTRYPOINT;
+
+  return spawnEnv;
+}
+
 /** Returns `-v mainGitDir:mainGitDir` mount args so git works inside the container.
  *  Walks up from startPath to find the .git file (worktrees may be nested directories). */
 function resolveWorktreeGitDirMount(startPath: string): string[] {
@@ -173,28 +229,195 @@ function resolveWorktreeGitDirMount(startPath: string): string[] {
   }
 }
 
-export function spawnAgent(
+interface PtySpawnSpec {
+  spawnCommand: string;
+  spawnArgs: string[];
+  cwd: string | undefined;
+  env: Record<string, string>;
+  containerName: string | null;
+}
+
+function buildPtySpawnSpec(
+  args: SpawnAgentArgs,
+  command: string,
+  cwd: string,
+  spawnEnv: Record<string, string>,
+  filteredEnv: Record<string, string>,
+): PtySpawnSpec {
+  const containerName = args.dockerMode ? `parallel-code-${args.agentId.slice(0, 12)}` : null;
+
+  if (!args.dockerMode) {
+    return {
+      spawnCommand: command,
+      spawnArgs: args.args,
+      cwd,
+      env: spawnEnv,
+      containerName,
+    };
+  }
+
+  const name = containerName as string;
+  const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
+  return {
+    spawnCommand: 'docker',
+    spawnArgs: [
+      'run',
+      '--rm',
+      '-it',
+      '--name',
+      name,
+      '--label',
+      'parallel-code=true',
+      '--network',
+      'host',
+      '--memory',
+      '8g',
+      '--pids-limit',
+      '512',
+      '--user',
+      `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
+      ...(args.dockerMountWorktreeParent
+        ? ['-v', `${path.dirname(cwd)}:${path.dirname(cwd)}`, ...resolveWorktreeGitDirMount(cwd)]
+        : []),
+      '-v',
+      `${cwd}:${cwd}`,
+      '-w',
+      cwd,
+      ...buildDockerEnvFlags(spawnEnv),
+      '-e',
+      `HOME=${DOCKER_CONTAINER_HOME}/agent-${args.agentId}`,
+      ...buildDockerCredentialMounts(
+        args.command,
+        args.shareDockerAgentAuth === true,
+        cwd,
+        `${DOCKER_CONTAINER_HOME}/agent-${args.agentId}`,
+      ),
+      image,
+      'sh',
+      '-c',
+      'mkdir -p "$HOME" && exec "$@"',
+      '--',
+      command,
+      ...args.args,
+    ],
+    cwd: undefined,
+    env: filteredEnv,
+    containerName,
+  };
+}
+
+function cleanupExistingSession(agentId: string, existing: PtySession | undefined): void {
+  if (!existing) return;
+  if (existing.flushTimer) clearTimeout(existing.flushTimer);
+  existing.subscribers.clear();
+  existing.proc.kill();
+  sessions.delete(agentId);
+}
+
+function attachPtyOutputHandlers(
   win: BrowserWindow,
-  args: {
-    taskId: string;
-    agentId: string;
-    command: string;
-    args: string[];
-    cwd: string;
-    env: Record<string, string>;
-    cols: number;
-    rows: number;
-    isShell?: boolean;
-    dockerMode?: boolean;
-    dockerImage?: string;
-    shareDockerAgentAuth?: boolean;
-    attachExisting?: boolean;
-    /** When true (coordinator tasks), also mount the parent of cwd so sub-task
-     *  worktrees created later are immediately visible inside the container. */
-    dockerMountWorktreeParent?: boolean;
-    onOutput: { __CHANNEL_ID__: string };
-  },
+  session: PtySession,
+  args: SpawnAgentArgs,
+  command: string,
 ): void {
+  let batchChunks: Buffer[] = [];
+  let batchSize = 0;
+  let tailChunks: Buffer[] = [];
+  let tailSize = 0;
+  const containerName = session.containerName;
+
+  const send = (msg: unknown) => {
+    sendToChannel(win, session.channelId, msg);
+  };
+
+  if (args.dockerMode) {
+    const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
+    const innerCmd = [command, ...args.args].join(' ');
+    const banner =
+      `\x1b[2m[docker] container: ${containerName}\r\n` +
+      `[docker] image: ${image}\r\n` +
+      `[docker] command: ${innerCmd}\r\n` +
+      `[docker] waiting for container to start…\x1b[0m\r\n\r\n`;
+    console.warn(`[docker] spawning container ${containerName} — image=${image} cmd=${innerCmd}`);
+    send({ type: 'Data', data: Buffer.from(banner, 'utf8').toString('base64') });
+  }
+
+  const flush = () => {
+    if (batchSize === 0) return;
+    const batch = Buffer.concat(batchChunks);
+    const encoded = batch.toString('base64');
+    send({ type: 'Data', data: encoded });
+    session.scrollback.write(batch);
+    for (const sub of session.subscribers) {
+      sub(encoded);
+    }
+    batchChunks = [];
+    batchSize = 0;
+    if (session.flushTimer) {
+      clearTimeout(session.flushTimer);
+      session.flushTimer = null;
+    }
+  };
+
+  session.proc.onData((data: string) => {
+    const chunk = Buffer.from(data, 'utf8');
+
+    tailChunks.push(chunk);
+    tailSize += chunk.length;
+    if (tailSize > TAIL_CAP) {
+      const combined = Buffer.concat(tailChunks);
+      const trimmed = combined.subarray(combined.length - TAIL_CAP);
+      tailChunks = [trimmed];
+      tailSize = trimmed.length;
+    }
+
+    batchChunks.push(chunk);
+    batchSize += chunk.length;
+
+    if (batchSize >= BATCH_MAX || chunk.length < 1024) {
+      flush();
+      return;
+    }
+
+    if (!session.flushTimer) {
+      session.flushTimer = setTimeout(flush, BATCH_INTERVAL);
+    }
+  });
+
+  session.proc.onExit(({ exitCode, signal }) => {
+    if (sessions.get(args.agentId) !== session) return;
+
+    if (containerName) {
+      console.warn(
+        `[docker] container ${containerName} exited — code=${exitCode} signal=${signal ?? 'none'}`,
+      );
+    }
+
+    flush();
+
+    const tailBuf = Buffer.concat(tailChunks);
+    const tailStr = tailBuf.toString('utf8');
+    const lines = tailStr
+      .split('\n')
+      .map((l) => l.replace(/\r$/, ''))
+      .filter((l) => l.length > 0)
+      .slice(-MAX_LINES);
+
+    send({
+      type: 'Exit',
+      data: {
+        exit_code: exitCode,
+        signal: signal !== undefined ? String(signal) : null,
+        last_output: lines,
+      },
+    });
+
+    emitPtyEvent('exit', args.agentId, { exitCode, signal });
+    sessions.delete(args.agentId);
+  });
+}
+
+export function spawnAgent(win: BrowserWindow, args: SpawnAgentArgs): void {
   const channelId = args.onOutput.__CHANNEL_ID__;
   const command = args.command || resolveUserShell();
   const cwd = args.cwd || process.env.HOME || '/';
@@ -233,50 +456,10 @@ export function spawnAgent(
     validateCommand('docker');
   }
 
-  // Kill any existing session with the same agentId to prevent PTY leaks
-  if (existing) {
-    if (existing.flushTimer) clearTimeout(existing.flushTimer);
-    existing.subscribers.clear();
-    existing.proc.kill();
-    sessions.delete(args.agentId);
-  }
+  cleanupExistingSession(args.agentId, existing);
 
-  const filteredEnv: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v !== undefined) filteredEnv[k] = v;
-  }
-
-  // Only allow safe env overrides from renderer. Reject vars that could
-  // alter process loading or execution behavior.
-  const ENV_BLOCK_LIST = new Set([
-    'PATH',
-    'HOME',
-    'USER',
-    'SHELL',
-    'LD_PRELOAD',
-    'LD_LIBRARY_PATH',
-    'DYLD_INSERT_LIBRARIES',
-    'NODE_OPTIONS',
-    'ELECTRON_RUN_AS_NODE',
-    // Prevent renderer from injecting or overriding MCP auth tokens.
-    'PARALLEL_CODE_MCP_TOKEN',
-  ]);
-  const safeEnvOverrides: Record<string, string> = {};
-  for (const [k, v] of Object.entries(args.env ?? {})) {
-    if (!ENV_BLOCK_LIST.has(k)) safeEnvOverrides[k] = v;
-  }
-
-  const spawnEnv: Record<string, string> = {
-    ...filteredEnv,
-    TERM: 'xterm-256color',
-    COLORTERM: 'truecolor',
-    ...safeEnvOverrides,
-  };
-
-  // Clear env vars that prevent nested agent sessions
-  delete spawnEnv.CLAUDECODE;
-  delete spawnEnv.CLAUDE_CODE_SESSION;
-  delete spawnEnv.CLAUDE_CODE_ENTRYPOINT;
+  const filteredEnv = copyProcessEnv();
+  const spawnEnv = buildPtySpawnEnv(args.env);
 
   // Backfill sandbox placeholders for pre-existing worktrees (and anywhere
   // Claude Code may launch). See ensureClaudeSandboxFiles for the why.
@@ -285,92 +468,22 @@ export function spawnAgent(
     ensureSandboxExcludes(cwd);
   }
 
-  let spawnCommand: string;
-  let spawnArgs: string[];
-
-  // Derive a predictable, unique container name from the agentId so we can
-  // reliably stop it later without having to parse docker inspect output.
-  const containerName = args.dockerMode ? `parallel-code-${args.agentId.slice(0, 12)}` : null;
-
-  if (args.dockerMode) {
-    const name = containerName as string;
-    const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
-    spawnCommand = 'docker';
-    spawnArgs = [
-      'run',
-      '--rm',
-      '-it',
-      // Predictable name so we can stop the container on kill
-      '--name',
-      name,
-      // Label so we can identify all containers owned by this app
-      '--label',
-      'parallel-code=true',
-      // Host networking — agents need internet access for API calls and package installs.
-      // Filesystem isolation (volume mounts) is the primary safety goal, not network isolation.
-      '--network',
-      'host',
-      // Resource limits to prevent runaway containers
-      '--memory',
-      '8g',
-      '--pids-limit',
-      '512',
-      // Run as host user so container files are owned by the host user
-      '--user',
-      `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
-      // Mount the coordinator worktree. For coordinator tasks, also mount the
-      // parent directory so sub-task worktrees created later are immediately
-      // visible via bind mount (VirtioFS propagation is too slow for new dirs).
-      // Also mount the main .git directory so git commands work inside the
-      // container (worktree .git files point to the main git dir by path).
-      ...(args.dockerMountWorktreeParent
-        ? ['-v', `${path.dirname(cwd)}:${path.dirname(cwd)}`, ...resolveWorktreeGitDirMount(cwd)]
-        : []),
-      '-v',
-      `${cwd}:${cwd}`,
-      '-w',
-      cwd,
-      // Forward env vars the agent needs (API keys, git config, etc.)
-      ...buildDockerEnvFlags(spawnEnv),
-      // Per-agent writable HOME so concurrent sub-tasks don't collide on config files.
-      '-e',
-      `HOME=${DOCKER_CONTAINER_HOME}/agent-${args.agentId}`,
-      // Mount SSH and git config read-only for git operations
-      ...buildDockerCredentialMounts(
-        args.command,
-        args.shareDockerAgentAuth === true,
-        cwd,
-        `${DOCKER_CONTAINER_HOME}/agent-${args.agentId}`,
-      ),
-      image,
-      // Pre-create the per-agent HOME directory then exec the real command.
-      // $HOME is already set by the -e flag above; using it here avoids repeating the path.
-      'sh',
-      '-c',
-      'mkdir -p "$HOME" && exec "$@"',
-      '--',
-      command,
-      ...args.args,
-    ];
-  } else {
-    spawnCommand = command;
-    spawnArgs = args.args;
-  }
+  const spawnSpec = buildPtySpawnSpec(args, command, cwd, spawnEnv, filteredEnv);
 
   logDebug('pty', `spawn command ${args.agentId}`, {
     taskId: args.taskId,
-    command: spawnCommand,
-    args: redactedSpawnArgs(spawnCommand, spawnArgs),
+    command: spawnSpec.spawnCommand,
+    args: redactedSpawnArgs(spawnSpec.spawnCommand, spawnSpec.spawnArgs),
     cwd,
     dockerMode: args.dockerMode === true,
   });
 
-  const proc = pty.spawn(spawnCommand, spawnArgs, {
+  const proc = pty.spawn(spawnSpec.spawnCommand, spawnSpec.spawnArgs, {
     name: 'xterm-256color',
     cols: args.cols,
     rows: args.rows,
-    cwd: args.dockerMode ? undefined : cwd,
-    env: args.dockerMode ? filteredEnv : spawnEnv,
+    cwd: spawnSpec.cwd,
+    env: spawnSpec.env,
   });
 
   const session: PtySession = {
@@ -382,120 +495,10 @@ export function spawnAgent(
     flushTimer: null,
     subscribers: new Set(),
     scrollback: new RingBuffer(),
-    containerName,
+    containerName: spawnSpec.containerName,
   };
   sessions.set(args.agentId, session);
-
-  // Batching strategy matching the Rust implementation
-  let batchChunks: Buffer[] = [];
-  let batchSize = 0;
-  let tailChunks: Buffer[] = [];
-  let tailSize = 0;
-
-  const send = (msg: unknown) => {
-    sendToChannel(win, session.channelId, msg);
-  };
-
-  // In Docker mode, write a diagnostic banner to the terminal so the user
-  // can see what command is being run (and debug when nothing else appears).
-  if (args.dockerMode) {
-    const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
-    const innerCmd = [command, ...args.args].join(' ');
-    const banner =
-      `\x1b[2m[docker] container: ${containerName}\r\n` +
-      `[docker] image: ${image}\r\n` +
-      `[docker] command: ${innerCmd}\r\n` +
-      `[docker] waiting for container to start…\x1b[0m\r\n\r\n`;
-    console.warn(`[docker] spawning container ${containerName} — image=${image} cmd=${innerCmd}`);
-    send({ type: 'Data', data: Buffer.from(banner, 'utf8').toString('base64') });
-  }
-
-  const flush = () => {
-    if (batchSize === 0) return;
-    const batch = Buffer.concat(batchChunks);
-    const encoded = batch.toString('base64');
-    send({ type: 'Data', data: encoded });
-    session.scrollback.write(batch);
-    for (const sub of session.subscribers) {
-      sub(encoded);
-    }
-    batchChunks = [];
-    batchSize = 0;
-    if (session.flushTimer) {
-      clearTimeout(session.flushTimer);
-      session.flushTimer = null;
-    }
-  };
-
-  proc.onData((data: string) => {
-    const chunk = Buffer.from(data, 'utf8');
-
-    // Maintain tail buffer for exit diagnostics
-    tailChunks.push(chunk);
-    tailSize += chunk.length;
-    if (tailSize > TAIL_CAP) {
-      const combined = Buffer.concat(tailChunks);
-      const trimmed = combined.subarray(combined.length - TAIL_CAP);
-      tailChunks = [trimmed];
-      tailSize = trimmed.length;
-    }
-
-    batchChunks.push(chunk);
-    batchSize += chunk.length;
-
-    // Flush large batches immediately
-    if (batchSize >= BATCH_MAX) {
-      flush();
-      return;
-    }
-
-    // Small read = likely interactive prompt, flush immediately
-    if (chunk.length < 1024) {
-      flush();
-      return;
-    }
-
-    // Otherwise schedule flush on timer
-    if (!session.flushTimer) {
-      session.flushTimer = setTimeout(flush, BATCH_INTERVAL);
-    }
-  });
-
-  proc.onExit(({ exitCode, signal }) => {
-    // If this session was replaced by a new spawn with the same agentId,
-    // skip cleanup — the new session owns the map entry now.
-    if (sessions.get(args.agentId) !== session) return;
-
-    if (containerName) {
-      console.warn(
-        `[docker] container ${containerName} exited — code=${exitCode} signal=${signal ?? 'none'}`,
-      );
-    }
-
-    // Flush any remaining buffered data
-    flush();
-
-    // Parse tail buffer into last N lines for exit diagnostics
-    const tailBuf = Buffer.concat(tailChunks);
-    const tailStr = tailBuf.toString('utf8');
-    const lines = tailStr
-      .split('\n')
-      .map((l) => l.replace(/\r$/, ''))
-      .filter((l) => l.length > 0)
-      .slice(-MAX_LINES);
-
-    send({
-      type: 'Exit',
-      data: {
-        exit_code: exitCode,
-        signal: signal !== undefined ? String(signal) : null,
-        last_output: lines,
-      },
-    });
-
-    emitPtyEvent('exit', args.agentId, { exitCode, signal });
-    sessions.delete(args.agentId);
-  });
+  attachPtyOutputHandlers(win, session, args, command);
 
   emitPtyEvent('spawn', args.agentId);
 }

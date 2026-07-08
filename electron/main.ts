@@ -81,17 +81,27 @@ fixEnv();
 
 // Verify that preload.cjs ALLOWED_CHANNELS stays in sync with the IPC enum.
 // Logs a warning in dev if they drift — catches mismatches before they hit users.
+//
+// preload.cjs builds ALLOWED_CHANNELS from channel-manifest.json at runtime
+// rather than embedding channel strings as source literals, so this can no
+// longer grep preload.cjs's text for each channel — it must compare against
+// the manifest that preload.cjs actually loads.
 function verifyPreloadAllowlist(): void {
   try {
     const preloadPath = path.join(__dirname, '..', 'electron', 'preload.cjs');
     const preloadSrc = fs.readFileSync(preloadPath, 'utf8');
+    if (!preloadSrc.includes("require('./ipc/channel-manifest.json')")) {
+      console.warn('[preload-sync] preload.cjs no longer loads the shared channel manifest');
+      return;
+    }
+    const manifestPath = path.join(__dirname, '..', 'electron', 'ipc', 'channel-manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, string>;
+    const manifestValues = new Set(Object.values(manifest));
     const enumValues = new Set(Object.values(IPC));
-    const hasChannel = (channel: string) =>
-      preloadSrc.includes(`'${channel}'`) || preloadSrc.includes(`"${channel}"`);
-    const missing = [...enumValues].filter((v) => !hasChannel(v));
+    const missing = [...enumValues].filter((v) => !manifestValues.has(v));
     if (missing.length > 0) {
       console.warn(
-        `[preload-sync] IPC channels missing from preload.cjs ALLOWED_CHANNELS: ${missing.join(', ')}`,
+        `[preload-sync] IPC channels missing from channel-manifest.json: ${missing.join(', ')}`,
       );
     }
   } catch {
