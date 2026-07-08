@@ -153,7 +153,7 @@ function taskAttentionStyles(
   };
 }
 
-function TaskRowShell(props: {
+export function TaskRowShell(props: {
   taskId: string;
   class: string;
   taskIndex?: number;

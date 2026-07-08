@@ -66,7 +66,7 @@ function SettingsSection(props: { title: string; children: JSX.Element }) {
   );
 }
 
-function SettingsCheckboxRow(props: {
+export function SettingsCheckboxRow(props: {
   label: string;
   description: JSX.Element;
   checked: boolean;
@@ -100,7 +100,7 @@ function SettingsCheckboxRow(props: {
   );
 }
 
-function PresetThemeCard(props: {
+export function PresetThemeCard(props: {
   preset: ReturnType<typeof presetsForTone>[number];
   active: boolean;
   onSelect: () => void;

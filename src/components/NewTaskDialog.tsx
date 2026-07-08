@@ -63,7 +63,7 @@ interface NewTaskDialogProps {
   onClose: () => void;
 }
 
-function CheckboxOption(props: {
+export function CheckboxOption(props: {
   label: JSX.Element;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -100,7 +100,7 @@ function CheckboxOption(props: {
   );
 }
 
-function InlineBanner(props: { color: string; children: JSX.Element; fontSize?: string }) {
+export function InlineBanner(props: { color: string; children: JSX.Element; fontSize?: string }) {
   return (
     <div
       style={{
