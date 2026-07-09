@@ -34,7 +34,7 @@ import {
 import { dataTransferToShellArgs, escapePath } from '../lib/terminalDrop';
 import { cleanCopiedTerminalText } from '../lib/copy-text';
 import { hasTerminalUserActivity, nextTerminalInputPending } from '../lib/terminalInputPending';
-import { createTerminalHttpLinkHandler } from '../lib/terminalLinks';
+import { computeWrappedPathLinks, createTerminalHttpLinkHandler } from '../lib/terminalLinks';
 import type { PtyOutput } from '../ipc/types';
 
 let windowUnloading = false;
@@ -458,31 +458,12 @@ export function TerminalView(props: TerminalViewProps) {
           callback(undefined);
           return;
         }
-        const line = term.buffer.active.getLine(y - 1)?.translateToString(true) ?? '';
-        // Match file paths: absolute, ./ or ../ relative, and bare relative with /
-        // Supports @scoped packages, line:col suffixes like foo.ts:42:10
-        const regex =
-          /(?:\/[\w@./-]+|\.{1,2}\/[\w@./-]+|[\w@][\w@./-]*\/[\w@./-]+)(?::\d+(?::\d+)?)?/g;
-        const links: { startIndex: number; length: number; text: string }[] = [];
-        let match: RegExpExecArray | null;
-        while ((match = regex.exec(line)) !== null) {
-          // Strip trailing punctuation that's not part of the path
-          const text = match[0].replace(/[.,;:!?)]+$/, '');
-          if (!text) continue;
-          // Must contain a dot somewhere (file extension) to avoid matching plain directories
-          if (!text.includes('.')) continue;
-          links.push({
-            startIndex: match.index,
-            length: text.length,
-            text,
-          });
-        }
+        // Reconstruct wrapped lines so a path that spans multiple rows stays a
+        // single clickable link across every row it occupies.
+        const links = computeWrappedPathLinks(term.buffer.active, y - 1);
         callback(
           links.map((link) => ({
-            range: {
-              start: { x: link.startIndex + 1, y },
-              end: { x: link.startIndex + link.length + 1, y },
-            },
+            range: link.range,
             text: link.text,
             activate(event: MouseEvent, _text: string) {
               // Require Cmd+click (Mac) or Ctrl+click (Linux) to open links
