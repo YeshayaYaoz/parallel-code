@@ -188,89 +188,99 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
     ),
   );
 
-  // Initialize remaining state each time the dialog opens
-  createEffect(() => {
-    if (!props.open) return;
+  // Initialize remaining state each time the dialog opens.  Same on()+untrack
+  // guard as the effect above: fire only on the props.open *transition* and
+  // untrack the body, so no store read — nor the prompt/name snapshot below —
+  // subscribes the effect. Otherwise a tracked read (e.g. the synchronous
+  // prompt()/name() reads when agents are cached, or store.availableAgents
+  // changing while open) would re-fire this effect and reset the fields via
+  // setPrompt('')/setName('') mid-typing.
+  createEffect(
+    on(
+      () => props.open,
+      (open) => {
+        if (!open) return;
+        untrack(() => {
+          // Reset signals for a fresh dialog
+          setPrompt('');
+          setInitialPrompt('');
+          setInitialName('');
+          setConfirmDiscard(false);
+          setName('');
+          setError('');
+          setLoading(false);
+          setGitIsolation('worktree');
+          setDockerMode(false);
+          setDockerImageReady(null);
+          setDockerBuilding(false);
+          setDockerBuildOutput('');
+          setDockerBuildError('');
+          setProjectDockerfile(null);
+          setCoordinatorMode(false);
 
-    // Reset signals for a fresh dialog
-    setPrompt('');
-    setInitialPrompt('');
-    setInitialName('');
-    setConfirmDiscard(false);
-    setName('');
-    setError('');
-    setLoading(false);
-    setGitIsolation('worktree');
-    setDockerMode(false);
-    setDockerImageReady(null);
-    setDockerBuilding(false);
-    setDockerBuildOutput('');
-    setDockerBuildError('');
-    setProjectDockerfile(null);
-    setCoordinatorMode(false);
+          void (async () => {
+            // Check Docker availability in background
+            invoke<boolean>(IPC.CheckDockerAvailable).then(
+              (available) => setDockerAvailable(available),
+              () => setDockerAvailable(false),
+            );
+            if (store.availableAgents.length === 0) {
+              await loadAgents();
+            }
+            const lastAgent = store.lastAgentId
+              ? (store.availableAgents.find((a) => a.id === store.lastAgentId) ?? null)
+              : null;
+            setSelectedAgent(lastAgent ?? store.availableAgents[0] ?? null);
 
-    void (async () => {
-      // Check Docker availability in background
-      invoke<boolean>(IPC.CheckDockerAvailable).then(
-        (available) => setDockerAvailable(available),
-        () => setDockerAvailable(false),
-      );
-      if (store.availableAgents.length === 0) {
-        await loadAgents();
-      }
-      const lastAgent = store.lastAgentId
-        ? (store.availableAgents.find((a) => a.id === store.lastAgentId) ?? null)
-        : null;
-      setSelectedAgent(lastAgent ?? store.availableAgents[0] ?? null);
+            // Pre-fill from drop data if present
+            const dropUrl = store.newTaskDropUrl;
+            const fallbackProjectId = store.lastProjectId ?? store.projects[0]?.id ?? null;
+            const defaults = dropUrl ? getGitHubDropDefaults(dropUrl) : null;
 
-      // Pre-fill from drop data if present
-      const dropUrl = store.newTaskDropUrl;
-      const fallbackProjectId = store.lastProjectId ?? store.projects[0]?.id ?? null;
-      const defaults = dropUrl ? getGitHubDropDefaults(dropUrl) : null;
+            if (dropUrl) setPrompt(`review ${dropUrl}`);
+            if (defaults) setName(defaults.name);
+            setSelectedProjectId(defaults?.projectId ?? fallbackProjectId);
 
-      if (dropUrl) setPrompt(`review ${dropUrl}`);
-      if (defaults) setName(defaults.name);
-      setSelectedProjectId(defaults?.projectId ?? fallbackProjectId);
+            // Pre-fill from arena comparison prompt
+            const prefill = store.newTaskPrefillPrompt;
+            if (prefill) {
+              setPrompt(prefill.prompt);
+              setName('Compare arena results');
+              if (prefill.projectId) setSelectedProjectId(prefill.projectId);
+            }
+            // Snapshot the post-prefill values as the close-guard baseline.
+            setInitialPrompt(prompt());
+            setInitialName(name());
 
-      // Pre-fill from arena comparison prompt
-      const prefill = store.newTaskPrefillPrompt;
-      if (prefill) {
-        setPrompt(prefill.prompt);
-        setName('Compare arena results');
-        if (prefill.projectId) setSelectedProjectId(prefill.projectId);
-      }
-      // Snapshot the post-prefill values WITHOUT subscribing: when agents are
-      // already cached this IIFE runs synchronously inside the effect's
-      // reactive scope, so a tracked prompt()/name() read would make every
-      // keystroke re-fire the effect and wipe the field via setPrompt('').
-      setInitialPrompt(untrack(prompt));
-      setInitialName(untrack(name));
+            promptRef?.focus();
+          })();
 
-      promptRef?.focus();
-    })();
+          // Capture-phase handler for Alt+Arrow to navigate form sections / within fields
+          const handleAltArrow = (e: KeyboardEvent) => {
+            if (!e.altKey) return;
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              navigateDialogFields(e.key === 'ArrowDown' ? 'down' : 'up');
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              // Preserve native word-jump (Alt+Arrow) in text inputs
+              const tag = (document.activeElement as HTMLElement)?.tagName;
+              if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              navigateWithinField(e.key === 'ArrowRight' ? 'right' : 'left');
+            }
+          };
+          window.addEventListener('keydown', handleAltArrow, true);
 
-    // Capture-phase handler for Alt+Arrow to navigate form sections / within fields
-    const handleAltArrow = (e: KeyboardEvent) => {
-      if (!e.altKey) return;
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        navigateDialogFields(e.key === 'ArrowDown' ? 'down' : 'up');
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        // Preserve native word-jump (Alt+Arrow) in text inputs
-        const tag = (document.activeElement as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        navigateWithinField(e.key === 'ArrowRight' ? 'right' : 'left');
-      }
-    };
-    window.addEventListener('keydown', handleAltArrow, true);
-
-    onCleanup(() => {
-      window.removeEventListener('keydown', handleAltArrow, true);
-    });
-  });
+          onCleanup(() => {
+            window.removeEventListener('keydown', handleAltArrow, true);
+          });
+        });
+      },
+      { defer: true },
+    ),
+  );
 
   // Fetch gitignored dirs when project changes
   createEffect(() => {
