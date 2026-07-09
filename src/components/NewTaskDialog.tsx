@@ -239,8 +239,12 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
         setName('Compare arena results');
         if (prefill.projectId) setSelectedProjectId(prefill.projectId);
       }
-      setInitialPrompt(prompt());
-      setInitialName(name());
+      // Snapshot the post-prefill values WITHOUT subscribing: when agents are
+      // already cached this IIFE runs synchronously inside the effect's
+      // reactive scope, so a tracked prompt()/name() read would make every
+      // keystroke re-fire the effect and wipe the field via setPrompt('').
+      setInitialPrompt(untrack(prompt));
+      setInitialName(untrack(name));
 
       promptRef?.focus();
     })();
