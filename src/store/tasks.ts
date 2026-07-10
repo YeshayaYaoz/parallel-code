@@ -199,16 +199,17 @@ async function writeToAgentWhenReady(taskId: string, agentId: string, data: stri
 const STEPS_INSTRUCTION =
   'IMPORTANT: Maintain .claude/steps.json throughout this task. ' +
   'This file is the engineering-manager view of the task — it must always answer "what is going on right now?" at a glance, including any work delegated to sub-agents. ' +
-  'Append a new entry at every meaningful transition (starting a phase, completing it, spawning sub-agents, hitting a blocker, or reaching awaiting_review). Never modify previous entries.\n' +
+  'It must always contain one valid JSON array of entry objects — never JSONL, multiple top-level objects, or markdown. ' +
+  'Append a new entry at every meaningful transition (starting a phase, completing it, spawning sub-agents, hitting a blocker, or reaching awaiting_review). To append, preserve every existing object and rewrite the complete array with the new object at the end; never alter or remove previous entries.\n' +
   'Fields:\n' +
-  '  summary: ≤60 chars. Outcome-oriented, not action-oriented. Describe what was decided or completed, not what you are doing. E.g. "Auth middleware complete — JWT + rate-limit" not "Implementing auth middleware".\n' +
+  '  summary: ≤60 chars. For active statuses, describe what is happening now in present tense. Name the concrete work, not just the phase (e.g. "Running auth integration tests"). For awaiting_review and done, describe the outcome or decision.\n' +
   '  detail: one sentence max, only if it adds context the summary cannot carry — omit otherwise.\n' +
   '  status: starting | investigating | implementing | testing | awaiting_review | done.\n' +
   '  files_touched: only files you actually wrote or modified in this step, not files you read.\n' +
   '  agent_id: short label for the sub-agent doing this work (e.g. "auth-worker", "test-runner"). Omit for your own entries. Use the same id consistently across all entries from one delegated agent so the UI can group them.\n' +
   'Sub-agents: when you spawn a sub-agent, append one entry describing what it will work on, including its agent_id. When it finishes, append a completion entry with the same agent_id and its outcome.\n' +
-  'Example: {"summary":"Auth middleware complete — JWT + rate-limit","status":"implementing","files_touched":["src/middleware/auth.ts"]}.\n' +
-  'Sub-agent example: {"summary":"Schema migration generated","status":"implementing","agent_id":"db-worker","files_touched":["migrations/0042_users.sql"]}.\n' +
+  'Example file: [{"summary":"Adding JWT validation and rate limiting","status":"implementing","files_touched":["src/middleware/auth.ts"]}].\n' +
+  'Sub-agent example file: [{"summary":"Generating the users schema migration","status":"implementing","agent_id":"db-worker","files_touched":["migrations/0042_users.sql"]}].\n' +
   'When you want the user to review your work: write an entry with status "awaiting_review" describing the decision or action you need from them, then pause.';
 
 export interface CreateTaskOptions {

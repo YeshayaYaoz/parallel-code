@@ -40,6 +40,7 @@ import { SidebarFooter } from './SidebarFooter';
 import { IconButton } from './IconButton';
 import { UpdateButton } from './UpdateButton';
 import { StatusDot, getDotTooltip } from './StatusDot';
+import { TaskCurrentStateLine } from './TaskCurrentStateLine';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
 import { mod } from '../lib/platform';
@@ -213,6 +214,7 @@ export function Sidebar() {
   const [dragFromTaskId, setDragFromTaskId] = createSignal<string | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = createSignal<number | null>(null);
   const [resizing, setResizing] = createSignal(false);
+  const [nowMs, setNowMs] = createSignal(Date.now());
   let taskListRef: HTMLDivElement | undefined;
 
   const sidebarWidth = () => getPanelUserSize(SIDEBAR_SIZE_KEY) ?? SIDEBAR_DEFAULT_WIDTH;
@@ -268,6 +270,9 @@ export function Sidebar() {
   }
 
   onMount(() => {
+    const freshnessTimer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    onCleanup(() => clearInterval(freshnessTimer));
+
     const el = taskListRef;
     if (el) {
       const handler = (e: MouseEvent) => {
@@ -825,6 +830,7 @@ export function Sidebar() {
                     {(taskId) => (
                       <TaskEntry
                         taskId={taskId}
+                        nowMs={nowMs()}
                         globalIndex={globalIndex}
                         dragFromIndex={dragFromIndex}
                         dropTargetIndex={dropTargetIndex}
@@ -832,7 +838,7 @@ export function Sidebar() {
                     )}
                   </For>
                   <For each={collapsedTasks()}>
-                    {(taskId) => <CollapsedTaskEntry taskId={taskId} />}
+                    {(taskId) => <CollapsedTaskEntry taskId={taskId} nowMs={nowMs()} />}
                   </For>
                 </Show>
               );
@@ -863,6 +869,7 @@ export function Sidebar() {
               {(taskId) => (
                 <TaskEntry
                   taskId={taskId}
+                  nowMs={nowMs()}
                   globalIndex={globalIndex}
                   dragFromIndex={dragFromIndex}
                   dropTargetIndex={dropTargetIndex}
@@ -870,7 +877,7 @@ export function Sidebar() {
               )}
             </For>
             <For each={groupedTasks().orphanedCollapsed}>
-              {(taskId) => <CollapsedTaskEntry taskId={taskId} />}
+              {(taskId) => <CollapsedTaskEntry taskId={taskId} nowMs={nowMs()} />}
             </For>
           </Show>
 
@@ -955,6 +962,7 @@ export function Sidebar() {
 
 interface TaskEntryProps {
   taskId: string;
+  nowMs: number;
   globalIndex: (taskId: string) => number;
   dragFromIndex: () => number | null;
   dropTargetIndex: () => number | null;
@@ -971,6 +979,7 @@ function TaskEntry(props: TaskEntryProps) {
         fallback={
           <TaskRow
             taskId={props.taskId}
+            nowMs={props.nowMs}
             globalIndex={props.globalIndex}
             dragFromIndex={props.dragFromIndex}
             dropTargetIndex={props.dropTargetIndex}
@@ -980,6 +989,7 @@ function TaskEntry(props: TaskEntryProps) {
       >
         <CoordinatorFolder
           taskId={props.taskId}
+          nowMs={props.nowMs}
           globalIndex={props.globalIndex}
           dragFromIndex={props.dragFromIndex}
           dropTargetIndex={props.dropTargetIndex}
@@ -1045,6 +1055,7 @@ function CoordinatorFolder(props: TaskEntryProps) {
                 </span>
               </Show>
             </div>
+            <TaskCurrentStateLine task={t()} nowMs={props.nowMs} variant="sidebar" />
           </TaskRowShell>
 
           {/* Indented active children */}
@@ -1052,6 +1063,7 @@ function CoordinatorFolder(props: TaskEntryProps) {
             {(childId) => (
               <TaskRow
                 taskId={childId}
+                nowMs={props.nowMs}
                 globalIndex={props.globalIndex}
                 dragFromIndex={props.dragFromIndex}
                 dropTargetIndex={props.dropTargetIndex}
@@ -1062,7 +1074,7 @@ function CoordinatorFolder(props: TaskEntryProps) {
 
           {/* Indented collapsed children */}
           <For each={children().collapsed}>
-            {(childId) => <CollapsedTaskEntry taskId={childId} indented />}
+            {(childId) => <CollapsedTaskEntry taskId={childId} nowMs={props.nowMs} indented />}
           </For>
         </>
       )}
@@ -1072,7 +1084,12 @@ function CoordinatorFolder(props: TaskEntryProps) {
 
 // --- Collapsed task entry: also handles coordinator folders in collapsed state ---
 
-function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordinatorId?: string }) {
+function CollapsedTaskEntry(props: {
+  taskId: string;
+  nowMs: number;
+  indented?: boolean;
+  coordinatorId?: string;
+}) {
   const task = () => store.tasks[props.taskId];
   // Only top-level coordinators render children — indented entries never recurse
   const isCoordinator = () => !props.indented && (task()?.coordinatorMode ?? false);
@@ -1150,18 +1167,29 @@ function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordin
                 </span>
               </Show>
             </div>
+            <TaskCurrentStateLine task={t()} nowMs={props.nowMs} variant="sidebar" />
           </TaskRowShell>
 
           {/* If collapsed coordinator, still show children nested */}
           <Show when={isCoordinator()}>
             <For each={children().active}>
               {(childId) => (
-                <CollapsedTaskEntry taskId={childId} indented coordinatorId={props.taskId} />
+                <CollapsedTaskEntry
+                  taskId={childId}
+                  nowMs={props.nowMs}
+                  indented
+                  coordinatorId={props.taskId}
+                />
               )}
             </For>
             <For each={children().collapsed}>
               {(childId) => (
-                <CollapsedTaskEntry taskId={childId} indented coordinatorId={props.taskId} />
+                <CollapsedTaskEntry
+                  taskId={childId}
+                  nowMs={props.nowMs}
+                  indented
+                  coordinatorId={props.taskId}
+                />
               )}
             </For>
           </Show>
@@ -1175,6 +1203,7 @@ function CollapsedTaskEntry(props: { taskId: string; indented?: boolean; coordin
 
 interface TaskRowProps {
   taskId: string;
+  nowMs: number;
   globalIndex: (taskId: string) => number;
   dragFromIndex: () => number | null;
   dropTargetIndex: () => number | null;
@@ -1239,6 +1268,7 @@ function TaskRow(props: TaskRowProps) {
                 )}
               </Show>
             </div>
+            <TaskCurrentStateLine task={t()} nowMs={props.nowMs} variant="sidebar" />
           </TaskRowShell>
         </>
       )}

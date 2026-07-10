@@ -75,13 +75,43 @@ function applyTimestamps(steps: unknown[], stepsFile: string, taskId: string): v
   }
 }
 
-/** Reads and parses `.claude/steps.json`. Returns the array or null. */
+function isStepObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Parses the canonical JSON array plus the single-object / JSONL forms that
+ * append-oriented agents commonly produce. The watcher normalizes supported
+ * alternatives back to an array when it adds host timestamps.
+ */
+export function parseStepsContent(raw: string): unknown[] | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    return isStepObject(parsed) ? [parsed] : null;
+  } catch {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return null;
+
+    try {
+      const entries: unknown[] = lines.map((line) => JSON.parse(line) as unknown);
+      return entries.every(isStepObject) ? entries : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** Reads and parses `.claude/steps.json`. Returns the entries or null. */
 function readStepsFile(stepsFile: string): unknown[] | null {
   try {
     const raw = fs.readFileSync(stepsFile, 'utf-8');
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    return parsed as unknown[];
+    const steps = parseStepsContent(raw);
+    if (!steps) logWarn('steps', 'invalid steps file format', { stepsFile });
+    return steps;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
       // Non-ENOENT read failures (corrupt file, permissions, etc.)

@@ -954,6 +954,23 @@ describe('sendPrompt', () => {
     expect(writePayloads()).toEqual(['\x1b[I', 'hello Codex', '\r']);
   });
 
+  it('asks tracked active steps to describe what is happening now', async () => {
+    mockTasks['task-1'].stepsEnabled = true;
+
+    await sendPrompt('task-1', 'agent-1', 'hello Codex');
+
+    const injectedPrompt = writePayloads()[1];
+    expect(injectedPrompt).toContain(
+      'For active statuses, describe what is happening now in present tense.',
+    );
+    expect(injectedPrompt).toContain(
+      'For awaiting_review and done, describe the outcome or decision.',
+    );
+    expect(injectedPrompt).toContain('must always contain one valid JSON array');
+    expect(injectedPrompt).toContain('rewrite the complete array');
+    expect(injectedPrompt).not.toContain('Outcome-oriented, not action-oriented.');
+  });
+
   it('keeps Enter outside the bracketed paste block', async () => {
     mockIsAgentBracketedPasteEnabled.mockReturnValue(true);
 
