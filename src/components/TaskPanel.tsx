@@ -41,6 +41,7 @@ import { isMac } from '../lib/platform';
 import type { Task } from '../store/types';
 import type { CommitInfo } from '../ipc/types';
 import { isLandedTaskState } from '../store/landing';
+import { shouldPollTaskCommits } from './task-commit-polling';
 
 interface TaskPanelProps {
   task: Task;
@@ -193,16 +194,27 @@ export function TaskPanel(props: TaskPanelProps) {
     }
   });
 
-  // Poll for branch commits for worktree-isolated and direct-mode tasks (not just
-  // the active one), so CommitNavBar shows correct state regardless of which column
-  // is focused. For direct mode, request recent commits as fallback since there are
-  // no branch-specific commits when working on main.
+  // Poll for branch commits for visible worktree-isolated and direct-mode tasks.
+  // This includes inactive columns in the tiled layout, while hidden and offscreen
+  // panels restart with an immediate refresh when they become visible again. For
+  // direct mode, request recent commits since there are no branch-specific commits
+  // when working on main.
   createEffect(() => {
     const worktreePath = props.task.worktreePath;
     const baseBranch = props.task.baseBranch;
     const isolation = props.task.gitIsolation;
     if (isLandedTask()) return;
     if (isolation !== 'worktree' && isolation !== 'direct') return;
+    const focusMode = store.focusMode;
+    if (
+      !shouldPollTaskCommits(
+        focusMode,
+        focusMode ? props.isActive : false,
+        focusMode ? undefined : store.taskViewportVisibility[props.task.id],
+      )
+    ) {
+      return;
+    }
     let cancelled = false;
 
     async function fetchCommits() {
