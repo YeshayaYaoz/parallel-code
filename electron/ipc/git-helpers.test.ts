@@ -9,6 +9,12 @@ import { changedFilesFromMaps, countReadableTextLines } from './git.js';
 import { appendGitInfoExcludeBlock, resolveGitInfoExcludePath } from './git-exclude.js';
 
 const tempDirs: string[] = [];
+const localGitEnvVars = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+  encoding: 'utf8',
+})
+  .trim()
+  .split('\n')
+  .filter(Boolean);
 
 function tempDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'parallel-code-git-helpers-'));
@@ -18,6 +24,19 @@ function tempDir(): string {
 
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+function withoutInheritedGitContext<T>(fn: () => T): T {
+  const inherited = new Map(localGitEnvVars.map((name) => [name, process.env[name]]));
+  for (const name of localGitEnvVars) delete process.env[name];
+  try {
+    return fn();
+  } finally {
+    for (const [name, value] of inherited) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 }
 
 function initRepository(): string {
@@ -94,37 +113,40 @@ describe('countReadableTextLines', () => {
 });
 
 describe('git exclude helpers', () => {
-  it('resolves the exclude path for normal repositories', () => {
-    const root = initRepository();
+  it('resolves the exclude path for normal repositories', () =>
+    withoutInheritedGitContext(() => {
+      const root = initRepository();
 
-    expect(resolveGitInfoExcludePath(root)).toBe(path.join(root, '.git', 'info', 'exclude'));
-  });
+      expect(resolveGitInfoExcludePath(root)).toBe(path.join(root, '.git', 'info', 'exclude'));
+    }));
 
-  it('writes linked worktree excludes to the common file Git reads', () => {
-    const root = initRepository();
-    const worktreePath = path.join(tempDir(), 'task');
-    git(root, ['worktree', 'add', '-b', 'task', worktreePath]);
-    const commonExcludePath = path.join(fs.realpathSync(root), '.git', 'info', 'exclude');
+  it('writes linked worktree excludes to the common file Git reads', () =>
+    withoutInheritedGitContext(() => {
+      const root = initRepository();
+      const worktreePath = path.join(tempDir(), 'task');
+      git(root, ['worktree', 'add', '-b', 'task', worktreePath]);
+      const commonExcludePath = path.join(fs.realpathSync(root), '.git', 'info', 'exclude');
 
-    expect(resolveGitInfoExcludePath(worktreePath)).toBe(commonExcludePath);
+      expect(resolveGitInfoExcludePath(worktreePath)).toBe(commonExcludePath);
 
-    appendGitInfoExcludeBlock(worktreePath, '# probe', '# probe\n/probe\n');
-    fs.writeFileSync(path.join(worktreePath, 'probe'), 'ignored\n', 'utf8');
+      appendGitInfoExcludeBlock(worktreePath, '# probe', '# probe\n/probe\n');
+      fs.writeFileSync(path.join(worktreePath, 'probe'), 'ignored\n', 'utf8');
 
-    expect(git(worktreePath, ['check-ignore', '-v', 'probe'])).toContain('info/exclude');
-    expect(git(worktreePath, ['status', '--short', '--untracked-files=all'])).not.toContain(
-      'probe',
-    );
-  });
+      expect(git(worktreePath, ['check-ignore', '-v', 'probe'])).toContain('info/exclude');
+      expect(git(worktreePath, ['status', '--short', '--untracked-files=all'])).not.toContain(
+        'probe',
+      );
+    }));
 
-  it('appends an idempotent block with newline padding', () => {
-    const root = initRepository();
-    const excludePath = path.join(root, '.git', 'info', 'exclude');
-    fs.writeFileSync(excludePath, 'existing', 'utf8');
+  it('appends an idempotent block with newline padding', () =>
+    withoutInheritedGitContext(() => {
+      const root = initRepository();
+      const excludePath = path.join(root, '.git', 'info', 'exclude');
+      fs.writeFileSync(excludePath, 'existing', 'utf8');
 
-    appendGitInfoExcludeBlock(root, '# marker', '# marker\nignored\n');
-    appendGitInfoExcludeBlock(root, '# marker', '# marker\nignored\n');
+      appendGitInfoExcludeBlock(root, '# marker', '# marker\nignored\n');
+      appendGitInfoExcludeBlock(root, '# marker', '# marker\nignored\n');
 
-    expect(fs.readFileSync(excludePath, 'utf8')).toBe('existing\n# marker\nignored\n');
-  });
+      expect(fs.readFileSync(excludePath, 'utf8')).toBe('existing\n# marker\nignored\n');
+    }));
 });
