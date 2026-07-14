@@ -28,12 +28,12 @@ function git(cwd: string, args: string[]): string {
 
 function withoutInheritedGitContext<T>(fn: () => T): T {
   const inherited = new Map(localGitEnvVars.map((name) => [name, process.env[name]]));
-  for (const name of localGitEnvVars) delete process.env[name];
+  for (const name of localGitEnvVars) Reflect.deleteProperty(process.env, name);
   try {
     return fn();
   } finally {
     for (const [name, value] of inherited) {
-      if (value === undefined) delete process.env[name];
+      if (value === undefined) Reflect.deleteProperty(process.env, name);
       else process.env[name] = value;
     }
   }
