@@ -9,9 +9,6 @@ export function resolveGitInfoExcludePath(
   worktreePath: string,
   execFileSyncImpl: ExecFileSync = childProcess.execFileSync,
 ): string | null {
-  const localGitPath = resolveLocalGitInfoExcludePath(worktreePath);
-  if (localGitPath) return localGitPath;
-
   try {
     const out = execFileSyncImpl('git', ['rev-parse', '--git-common-dir'], {
       cwd: worktreePath,
@@ -21,23 +18,6 @@ export function resolveGitInfoExcludePath(
     }).trim();
     const commonDir = path.isAbsolute(out) ? out : path.join(worktreePath, out);
     return path.join(commonDir, 'info', 'exclude');
-  } catch {
-    return null;
-  }
-}
-
-function resolveLocalGitInfoExcludePath(worktreePath: string): string | null {
-  const gitPath = path.join(worktreePath, '.git');
-  try {
-    const stat = fs.statSync(gitPath);
-    if (stat.isDirectory()) return path.join(gitPath, 'info', 'exclude');
-    const rawGitDir = fs
-      .readFileSync(gitPath, 'utf8')
-      .trim()
-      .replace(/^gitdir:\s*/, '');
-    if (!rawGitDir) return null;
-    const gitDir = path.isAbsolute(rawGitDir) ? rawGitDir : path.resolve(worktreePath, rawGitDir);
-    return path.join(gitDir, 'info', 'exclude');
   } catch {
     return null;
   }

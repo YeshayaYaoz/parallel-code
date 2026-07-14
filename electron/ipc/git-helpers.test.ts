@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,6 +14,27 @@ function tempDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'parallel-code-git-helpers-'));
   tempDirs.push(dir);
   return dir;
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+function initRepository(): string {
+  const root = tempDir();
+  git(root, ['init']);
+  fs.writeFileSync(path.join(root, 'tracked.txt'), 'initial\n', 'utf8');
+  git(root, ['add', 'tracked.txt']);
+  git(root, [
+    '-c',
+    'user.name=Parallel Code Tests',
+    '-c',
+    'user.email=tests@parallel-code.local',
+    'commit',
+    '-m',
+    'initial',
+  ]);
+  return root;
 }
 
 afterEach(() => {
@@ -73,24 +95,30 @@ describe('countReadableTextLines', () => {
 
 describe('git exclude helpers', () => {
   it('resolves the exclude path for normal repositories', () => {
-    const root = tempDir();
-    fs.mkdirSync(path.join(root, '.git', 'info'), { recursive: true });
+    const root = initRepository();
 
     expect(resolveGitInfoExcludePath(root)).toBe(path.join(root, '.git', 'info', 'exclude'));
   });
 
-  it('resolves the exclude path for linked worktrees', () => {
-    const root = tempDir();
-    const gitDir = path.join(tempDir(), '.git', 'worktrees', 'task');
-    fs.mkdirSync(path.join(gitDir, 'info'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.git'), `gitdir: ${gitDir}\n`, 'utf8');
+  it('writes linked worktree excludes to the common file Git reads', () => {
+    const root = initRepository();
+    const worktreePath = path.join(tempDir(), 'task');
+    git(root, ['worktree', 'add', '-b', 'task', worktreePath]);
+    const commonExcludePath = path.join(fs.realpathSync(root), '.git', 'info', 'exclude');
 
-    expect(resolveGitInfoExcludePath(root)).toBe(path.join(gitDir, 'info', 'exclude'));
+    expect(resolveGitInfoExcludePath(worktreePath)).toBe(commonExcludePath);
+
+    appendGitInfoExcludeBlock(worktreePath, '# probe', '# probe\n/probe\n');
+    fs.writeFileSync(path.join(worktreePath, 'probe'), 'ignored\n', 'utf8');
+
+    expect(git(worktreePath, ['check-ignore', '-v', 'probe'])).toContain('info/exclude');
+    expect(git(worktreePath, ['status', '--short', '--untracked-files=all'])).not.toContain(
+      'probe',
+    );
   });
 
   it('appends an idempotent block with newline padding', () => {
-    const root = tempDir();
-    fs.mkdirSync(path.join(root, '.git', 'info'), { recursive: true });
+    const root = initRepository();
     const excludePath = path.join(root, '.git', 'info', 'exclude');
     fs.writeFileSync(excludePath, 'existing', 'utf8');
 
