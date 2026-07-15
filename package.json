@@ -9,7 +9,7 @@
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
-    "dev": "npm run compile && npm run build:mcp && concurrently -k \"vite --config electron/vite.config.electron.ts\" \"wait-on http://localhost:1421 && cross-env VITE_DEV_SERVER_URL=http://localhost:1421 electron --no-sandbox dist-electron/main.js\"",
+    "dev": "npm run compile && npm run build:mcp && concurrently -k \"vite --config electron/vite.config.electron.ts\" \"wait-on http://127.0.0.1:1421 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:1421 electron --no-sandbox dist-electron/main.js\"",
     "typecheck": "tsc --noEmit",
     "compile": "tsc -p electron/tsconfig.json",
     "build:mcp": "esbuild dist-electron/mcp/server.js --bundle --platform=node --format=cjs --outfile=dist-electron/mcp-server.cjs",
