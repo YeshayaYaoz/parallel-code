@@ -142,6 +142,13 @@ const ALLOWED_CHANNELS = new Set([
   'mcp_stale_url_warning',
   'mcp_coordinated_task_closed',
   'mcp_task_cleanup_failed',
+  'github_auth_start',
+  'github_auth_wait',
+  'github_auth_cancel_wait',
+  'github_auth_status',
+  'github_auth_logout',
+  'github_list_repos',
+  'github_clone_repo',
 ]);
 
 function isAllowedChannel(channel) {

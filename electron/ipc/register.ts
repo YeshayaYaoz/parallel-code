@@ -89,6 +89,15 @@ import {
 } from './updater.js';
 import { spawn } from 'child_process';
 import { askAboutCode, cancelAskAboutCode } from './ask-code.js';
+import {
+  startGitHubDeviceFlow,
+  waitForGitHubDeviceToken,
+  cancelGitHubAuthWait,
+  getGitHubAuthStatus,
+  logoutGitHub,
+  listGitHubRepos,
+  cloneGitHubRepo,
+} from './github.js';
 import { setMinimaxApiKey } from './ask-code-minimax.js';
 import { getSystemMonospaceFonts } from './system-fonts.js';
 import path from 'path';
@@ -1807,6 +1816,42 @@ export function registerAllHandlers(win: BrowserWindow): void {
   });
 
   ipcMain.handle(IPC.GetMCPLogs, () => getMCPLogs());
+
+  // --- GitHub connection (device-flow auth, repo listing, cloning) ---
+  ipcMain.handle(IPC.GitHubAuthStart, () => startGitHubDeviceFlow());
+
+  ipcMain.handle(IPC.GitHubAuthWait, (_e, args) => {
+    assertString(args.onOutput?.__CHANNEL_ID__, 'channelId');
+    assertString(args.deviceCode, 'deviceCode');
+    assertInt(args.interval, 'interval');
+    assertInt(args.expiresIn, 'expiresIn');
+    waitForGitHubDeviceToken(win, {
+      channelId: args.onOutput.__CHANNEL_ID__,
+      deviceCode: args.deviceCode,
+      interval: args.interval,
+      expiresIn: args.expiresIn,
+    });
+  });
+
+  ipcMain.handle(IPC.GitHubAuthCancelWait, () => cancelGitHubAuthWait());
+  ipcMain.handle(IPC.GitHubAuthStatus, () => getGitHubAuthStatus());
+  ipcMain.handle(IPC.GitHubAuthLogout, () => logoutGitHub());
+  ipcMain.handle(IPC.GitHubListRepos, () => listGitHubRepos());
+
+  ipcMain.handle(IPC.GitHubCloneRepo, async (_e, args) => {
+    assertString(args.cloneUrl, 'cloneUrl');
+    validatePath(args.parentDir, 'parentDir');
+    assertString(args.repoName, 'repoName');
+    if (!/^[a-zA-Z0-9._-]+$/.test(args.repoName)) {
+      throw new Error('repoName contains invalid characters');
+    }
+    const destDir = path.join(args.parentDir, args.repoName);
+    if (fs.existsSync(destDir)) {
+      throw new Error(`A folder named "${args.repoName}" already exists at that location.`);
+    }
+    await cloneGitHubRepo(args.cloneUrl, destDir);
+    return { destDir };
+  });
 
   // --- Forward window events to renderer ---
   win.on('focus', () => {

@@ -36,6 +36,8 @@ import { ConnectPhoneModal } from './ConnectPhoneModal';
 import { RemoveProjectConfirm } from './RemoveProjectConfirm';
 import { EditProjectDialog } from './EditProjectDialog';
 import { ImportWorktreesDialog } from './ImportWorktreesDialog';
+import { AddProjectChooserDialog } from './AddProjectChooserDialog';
+import { CloneFromGitHubDialog } from './CloneFromGitHubDialog';
 import { SidebarFooter } from './SidebarFooter';
 import { IconButton } from './IconButton';
 import { UpdateButton } from './UpdateButton';
@@ -210,6 +212,8 @@ export function Sidebar() {
   const [initialImportCandidates, setInitialImportCandidates] = createSignal<
     ImportableWorktree[] | null
   >(null);
+  const [showAddProjectChooser, setShowAddProjectChooser] = createSignal(false);
+  const [showCloneFromGitHub, setShowCloneFromGitHub] = createSignal(false);
   const [dragFromIndex, setDragFromIndex] = createSignal<number | null>(null);
   const [dragFromTaskId, setDragFromTaskId] = createSignal<string | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = createSignal<number | null>(null);
@@ -571,7 +575,7 @@ export function Sidebar() {
                   <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
                 </svg>
               }
-              onClick={() => handleAddProject()}
+              onClick={() => setShowAddProjectChooser(true)}
               title="Add project"
               size="sm"
             />
@@ -701,7 +705,7 @@ export function Sidebar() {
           fallback={
             <button
               class="icon-btn"
-              onClick={() => handleAddProject()}
+              onClick={() => setShowAddProjectChooser(true)}
               style={{
                 background: 'transparent',
                 border: `1px solid ${theme.border}`,
@@ -940,6 +944,24 @@ export function Sidebar() {
             setImportProject(null);
             setInitialImportCandidates(null);
           }}
+        />
+
+        <AddProjectChooserDialog
+          open={showAddProjectChooser()}
+          onClose={() => setShowAddProjectChooser(false)}
+          onChooseLocal={() => {
+            setShowAddProjectChooser(false);
+            void handleAddProject();
+          }}
+          onChooseGitHub={() => {
+            setShowAddProjectChooser(false);
+            setShowCloneFromGitHub(true);
+          }}
+        />
+        <CloneFromGitHubDialog
+          open={showCloneFromGitHub()}
+          onClose={() => setShowCloneFromGitHub(false)}
+          onCloned={() => setShowCloneFromGitHub(false)}
         />
 
         {/* Confirm remove project dialog */}
