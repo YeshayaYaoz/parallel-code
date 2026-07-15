@@ -898,6 +898,76 @@ describe('spawnAgent — disallowed command characters', () => {
   });
 });
 
+describe('spawnAgent — Windows npm .cmd shim spawn safety', () => {
+  function mockWhereResolvesTo(resolvedPath: string): void {
+    // validateCommand() and resolveWindowsSpawnTarget() each independently
+    // call `where` — mockImplementation (not -Once) so both calls resolve.
+    mockExecFileSync.mockImplementation((cmd: string, args?: string[]) => {
+      if (cmd === 'where' && args?.[0] === 'claude') return `${resolvedPath}\r\n`;
+      return '';
+    });
+  }
+
+  it('spawns a resolved native .exe directly, with args left as an array', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereResolvesTo('C:\\Program Files\\claude\\claude.exe');
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({ command: 'claude', args: ['--print', 'hello'], dockerMode: false }),
+      );
+      const { command, args } = getLastSpawnCall();
+      expect(command).toBe('C:\\Program Files\\claude\\claude.exe');
+      expect(args).toEqual(['--print', 'hello']);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('routes an npm .cmd shim through cmd.exe as a pre-escaped string, not an array', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereResolvesTo('C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.cmd');
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({ command: 'claude', args: ['--print', 'hello'], dockerMode: false }),
+      );
+      const lastCall = mockPtySpawn.mock.lastCall as [string, string[] | string, unknown];
+      const [command, commandLine] = lastCall;
+      expect(command).toBe('cmd.exe');
+      expect(typeof commandLine).toBe('string');
+      expect(commandLine).toMatch(/^\/d \/s \/c "/);
+      expect(commandLine).toContain('claude.cmd');
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('neutralizes cmd.exe metacharacters in an argument instead of letting them act as operators', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereResolvesTo('C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.cmd');
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({
+          command: 'claude',
+          args: ['--print', 'hello & calc.exe'],
+          dockerMode: false,
+        }),
+      );
+      const lastCall = mockPtySpawn.mock.lastCall as unknown as [string, string, unknown];
+      const commandLine = lastCall[1];
+      // The literal, unescaped operator must never appear — every cmd.exe
+      // metacharacter is caret-escaped so it's read as a literal character,
+      // not a command separator that could chain in an attacker's command.
+      expect(commandLine).not.toContain('& calc.exe');
+      expect(commandLine).toContain('^&');
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+});
+
 describe('resolveProjectDockerfile', () => {
   it('returns absolute path when .parallel-code/Dockerfile exists in project root', () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pty-resolve-'));

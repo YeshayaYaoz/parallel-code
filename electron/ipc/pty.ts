@@ -100,7 +100,8 @@ export interface SpawnAgentArgs {
   onOutput: { __CHANNEL_ID__: string };
 }
 
-function redactedSpawnArgs(command: string, args: string[]): string[] {
+function redactedSpawnArgs(command: string, args: string[] | string): string[] | string {
+  if (typeof args === 'string') return args;
   if ((command === '/bin/sh' || command.endsWith('/sh')) && args[0] === '-c') {
     return ['-c', '<redacted>'];
   }
@@ -247,9 +248,95 @@ function resolveWorktreeGitDirMount(startPath: string): string[] {
   }
 }
 
+// --- Windows .cmd/.bat spawn safety ---
+//
+// npm installs CLI tools on Windows as `.cmd` (or `.bat`) shim scripts, not
+// native .exe files. node-pty calls Windows' CreateProcess directly with no
+// shell involved, and CreateProcess cannot execute a .cmd/.bat file — so a
+// bare `pty.spawn('claude', ...)` fails with "File not found" even though
+// `claude` resolves fine when typed into an interactive shell (the shell does
+// the PATHEXT resolution and batch-file interpretation for you).
+//
+// Routing through `cmd.exe /c` is the only way to run these, but naively
+// concatenating arguments into a cmd.exe command line is the exact
+// vulnerability behind CVE-2024-27980 (Node.js's own child_process.spawn had
+// this bug: cmd.exe's argument-parsing rules make metacharacters like
+// `& | % ^` unsafe to pass through without correct escaping — Node's fix was
+// to refuse to spawn .cmd/.bat files at all unless the caller opts in with
+// `shell: true`). The escaping below is a straight port of the battle-tested
+// algorithm from `cross-spawn` (MIT licensed,
+// https://github.com/moxystudio/node-cross-spawn/blob/master/lib/util/escape.js),
+// itself based on https://qntm.org/cmd — the canonical reference for correct
+// Windows command-line quoting. Do not hand-roll a different algorithm here.
+
+const CMD_META_CHARS_RE = /([()[\]%!^"`<>&|;, *?])/g;
+
+function escapeCmdMetaChars(arg: string): string {
+  return arg.replace(CMD_META_CHARS_RE, '^$1');
+}
+
+function escapeCmdArgument(arg: string): string {
+  let escaped = arg;
+  // Sequence of backslashes followed by a double quote: double up all the
+  // backslashes and escape the double quote.
+  escaped = escaped.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+  // Sequence of backslashes followed by the end of the string (which will
+  // become a double quote next): double up all the backslashes.
+  escaped = escaped.replace(/(?=(\\+?)?)\1$/, '$1$1');
+  // Quote the whole thing, then escape metachars within the quotes.
+  return escapeCmdMetaChars(`"${escaped}"`);
+}
+
+/** Resolves `command` to an absolute path via Windows' `where`, or null if not found. */
+function resolveWindowsCommandPath(command: string): string | null {
+  if (path.isAbsolute(command)) return fs.existsSync(command) ? command : null;
+  try {
+    const out = execFileSync('where', [command], { encoding: 'utf8', timeout: 3000 });
+    const first = out.split(/\r?\n/).find((line) => line.trim());
+    return first ? first.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+const WINDOWS_NATIVE_EXECUTABLE_RE = /\.(?:com|exe)$/i;
+const WINDOWS_BATCH_FILE_RE = /\.(?:cmd|bat)$/i;
+
+/**
+ * On Windows, resolves `command` to its actual file and, if it's an npm-style
+ * `.cmd`/`.bat` shim, rewrites the spawn to go through `cmd.exe` with every
+ * argument safely escaped (returned as a pre-built command-line *string* —
+ * node-pty passes a string through to cmd.exe verbatim instead of re-quoting
+ * it as an array, the equivalent of Node's `windowsVerbatimArguments`). A
+ * resolved native `.exe`/`.com`, or any other platform, is returned unchanged.
+ */
+function resolveWindowsSpawnTarget(
+  command: string,
+  args: string[],
+): { spawnCommand: string; spawnArgs: string[] | string } {
+  if (process.platform !== 'win32') return { spawnCommand: command, spawnArgs: args };
+
+  const resolved = resolveWindowsCommandPath(command);
+  if (
+    !resolved ||
+    !WINDOWS_BATCH_FILE_RE.test(resolved) ||
+    WINDOWS_NATIVE_EXECUTABLE_RE.test(resolved)
+  ) {
+    return { spawnCommand: resolved ?? command, spawnArgs: args };
+  }
+
+  const escapedCommand = escapeCmdMetaChars(path.normalize(resolved));
+  const escapedArgs = args.map((arg) => escapeCmdArgument(arg));
+  const shellCommandLine = [escapedCommand, ...escapedArgs].join(' ');
+  return {
+    spawnCommand: process.env.ComSpec || 'cmd.exe',
+    spawnArgs: `/d /s /c "${shellCommandLine}"`,
+  };
+}
+
 interface PtySpawnSpec {
   spawnCommand: string;
-  spawnArgs: string[];
+  spawnArgs: string[] | string;
   cwd: string | undefined;
   env: Record<string, string>;
   containerName: string | null;
@@ -265,9 +352,10 @@ function buildPtySpawnSpec(
   const containerName = args.dockerMode ? `parallel-code-${args.agentId.slice(0, 12)}` : null;
 
   if (!args.dockerMode) {
+    const resolved = resolveWindowsSpawnTarget(command, args.args);
     return {
-      spawnCommand: command,
-      spawnArgs: args.args,
+      spawnCommand: resolved.spawnCommand,
+      spawnArgs: resolved.spawnArgs,
       cwd,
       env: spawnEnv,
       containerName,
