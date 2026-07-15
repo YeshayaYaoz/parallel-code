@@ -287,13 +287,40 @@ function escapeCmdArgument(arg: string): string {
   return escapeCmdMetaChars(`"${escaped}"`);
 }
 
+/**
+ * Picks the file an interactive cmd.exe would actually run for a bare command
+ * name, given all of `where`'s matches. npm installs each CLI as THREE files in
+ * the same directory: an extensionless Unix shell script (e.g. `claude`, for
+ * Git Bash), a `.cmd` shim (for cmd.exe), and a `.ps1` (for PowerShell). `where`
+ * lists the extensionless script FIRST, but Windows' CreateProcess (which
+ * node-pty calls directly) cannot execute it — only cmd.exe resolves bare names
+ * against PATHEXT and runs the `.cmd`. So we mimic cmd.exe: choose by PATHEXT
+ * priority (`.COM`, `.EXE`, `.BAT`, `.CMD`, …) and never return a file whose
+ * extension PATHEXT doesn't cover (the extensionless script, `.ps1`) unless it's
+ * the only candidate.
+ */
+function pickBestWindowsExecutable(candidates: string[]): string {
+  const pathext = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map((ext) => ext.trim().toLowerCase())
+    .filter(Boolean);
+  for (const ext of pathext) {
+    const match = candidates.find((candidate) => candidate.toLowerCase().endsWith(ext));
+    if (match) return match;
+  }
+  return candidates[0];
+}
+
 /** Resolves `command` to an absolute path via Windows' `where`, or null if not found. */
 function resolveWindowsCommandPath(command: string): string | null {
   if (path.isAbsolute(command)) return fs.existsSync(command) ? command : null;
   try {
     const out = execFileSync('where', [command], { encoding: 'utf8', timeout: 3000 });
-    const first = out.split(/\r?\n/).find((line) => line.trim());
-    return first ? first.trim() : null;
+    const candidates = out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return candidates.length > 0 ? pickBestWindowsExecutable(candidates) : null;
   } catch {
     return null;
   }
