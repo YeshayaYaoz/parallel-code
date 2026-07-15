@@ -1,0 +1,141 @@
+name: Claude Task Queue
+
+# Drains a queue of GitHub issues (labeled `queued-task`) through Claude Code
+# on a schedule, so tasks you leave overnight — or after you've used up your
+# Claude subscription's 5-hour usage window — get picked up automatically
+# once the window resets, with your computer off. Add a task by opening an
+# issue (from the GitHub app on your phone works fine) with the label
+# `queued-task`; Claude implements it, opens a PR that closes the issue, and
+# the next scheduled run moves on to the next one.
+#
+# One issue is processed per run: if Claude succeeds, the run immediately
+# stops (nothing left to babysit); if it fails (most commonly because the
+# subscription's usage window is exhausted), the run backs off and leaves
+# the issue queued for the next scheduled tick, which — since the window
+# resets on a rolling basis — eventually succeeds without you doing anything.
+#
+# Setup (one-time):
+#   1. Run `claude setup-token` locally and copy the printed token.
+#   2. Add it as a repository secret named CLAUDE_CODE_OAUTH_TOKEN
+#      (Settings -> Secrets and variables -> Actions -> New repository secret).
+#   3. Open an issue with the `queued-task` label to try it, or run this
+#      workflow manually from the Actions tab.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: claude-task-queue
+  cancel-in-progress: false
+
+env:
+  MAX_RETRIES: 20
+
+jobs:
+  process-next-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure queue labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create "queued-task" --color "0E8A16" --description "Task for Claude to pick up" --force
+          gh label create "claude-in-progress" --color "FBCA04" --description "Claude is currently working on this" --force
+          gh label create "claude-stuck" --color "B60205" --description "Claude gave up after repeated failures — needs a look" --force
+
+      - name: Find the oldest queued task
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --label "queued-task" --state open \
+            --json number,body,labels --limit 100 --jq '
+              [.[] | select(
+                (.labels | map(.name) | contains(["claude-in-progress"]) | not)
+                and (.labels | map(.name) | contains(["claude-stuck"]) | not)
+              )] | sort_by(.number) | .[0]
+            ')
+
+          if [ -z "$issue" ] || [ "$issue" = "null" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          delimiter="TASK_BODY_$(date +%s%N)"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$issue" | jq -r '.number')" >> "$GITHUB_OUTPUT"
+          {
+            echo "body<<$delimiter"
+            echo "$issue" | jq -r '.body'
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Mark in progress
+        if: steps.find.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit "${{ steps.find.outputs.number }}" --repo "$GITHUB_REPOSITORY" --add-label "claude-in-progress"
+
+      - name: Run Claude Code on the task
+        if: steps.find.outputs.found == 'true'
+        id: claude
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            ${{ steps.find.outputs.body }}
+
+            When you're done, commit your work on a new branch named
+            `claude/issue-${{ steps.find.outputs.number }}` and open a pull
+            request whose description includes the line
+            "Closes #${{ steps.find.outputs.number }}".
+          claude_args: "--max-turns 40"
+
+      - name: On success, unmark in-progress and report
+        if: steps.find.outputs.found == 'true' && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          number="${{ steps.find.outputs.number }}"
+          gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label "claude-in-progress"
+          gh issue comment "$number" --repo "$GITHUB_REPOSITORY" \
+            --body "✅ Claude finished this task — check for a pull request that closes it."
+
+      - name: On failure, back off and retry on the next scheduled run
+        if: steps.find.outputs.found == 'true' && steps.claude.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          number="${{ steps.find.outputs.number }}"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label "claude-in-progress"
+
+          retry_count=$(gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json comments \
+            --jq '[.comments[] | select(.body | startswith("🔁 Claude retry"))] | length')
+          next=$((retry_count + 1))
+
+          if [ "$next" -ge "$MAX_RETRIES" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --add-label "claude-stuck"
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" \
+              --body "⚠️ Claude failed $next times in a row — most likely a real error rather than a usage-limit wait. Stopping automatic retries. See the [failed run]($run_url), fix what's needed, then remove the \`claude-stuck\` label to re-queue."
+          else
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" \
+              --body "🔁 Claude retry $next/$MAX_RETRIES — this usually just means the subscription's usage window is exhausted. Left queued; the next scheduled run (within 15 minutes) will try again. [Run log]($run_url)"
+          fi
