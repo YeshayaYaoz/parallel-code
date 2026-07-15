@@ -81,7 +81,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
 
 async function isCommandAvailable(command: string): Promise<boolean> {
   try {
-    await execFileAsync('which', [command], { encoding: 'utf8', timeout: 3000 });
+    const lookup = process.platform === 'win32' ? 'where' : 'which';
+    await execFileAsync(lookup, [command], { encoding: 'utf8', timeout: 3000 });
     return true;
   } catch {
     return false;

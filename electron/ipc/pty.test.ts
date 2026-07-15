@@ -266,6 +266,35 @@ describe('spawnAgent docker mode', () => {
     expect(volumeFlags).toContain(`${cwd}:${cwd}`);
   });
 
+  it('maps -w and the cwd mount to a WSL2-style container path on Windows', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    try {
+      const cwd = 'C:\\Users\\dev\\project\\.worktrees\\task';
+      spawnAgent(createMockWindow(), buildSpawnArgs({ cwd, dockerMountWorktreeParent: false }));
+      const { args } = getLastSpawnCall();
+      const wIdx = args.indexOf('-w');
+      expect(args[wIdx + 1]).toBe('/mnt/c/Users/dev/project/.worktrees/task');
+      const volumeFlags = getFlagValues(args, '-v');
+      expect(volumeFlags).toContain(`${cwd}:/mnt/c/Users/dev/project/.worktrees/task`);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('translates a forwarded GOOGLE_APPLICATION_CREDENTIALS path on Windows', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.stubEnv('GOOGLE_APPLICATION_CREDENTIALS', 'C:\\Users\\dev\\gcloud\\creds.json');
+    try {
+      spawnAgent(createMockWindow(), buildSpawnArgs({}));
+      const envFlags = getFlagValues(getLastSpawnCall().args, '-e');
+      expect(envFlags).toContain(
+        'GOOGLE_APPLICATION_CREDENTIALS=/mnt/c/Users/dev/gcloud/creds.json',
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
   it('injects a per-agent HOME under /tmp into docker run args', () => {
     vi.stubEnv('HOME', '/Users/tester');
 
@@ -838,6 +867,34 @@ describe('validateCommand', () => {
 
   it('throws for a whitespace-only command string', () => {
     expect(() => validateCommand('   ')).toThrow(/must not be empty/);
+  });
+
+  it('resolves bare commands via `where` on win32', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    try {
+      validateCommand('sh');
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'where',
+        ['sh'],
+        expect.objectContaining({ timeout: 3000 }),
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+});
+
+describe('spawnAgent — disallowed command characters', () => {
+  it('rejects commands containing the cmd.exe env-expansion character', () => {
+    expect(() => spawnAgent(createMockWindow(), buildSpawnArgs({ command: 'foo%PATH%' }))).toThrow(
+      /disallowed characters/,
+    );
+  });
+
+  it('rejects commands containing the cmd.exe escape character', () => {
+    expect(() => spawnAgent(createMockWindow(), buildSpawnArgs({ command: 'foo^bar' }))).toThrow(
+      /disallowed characters/,
+    );
   });
 });
 

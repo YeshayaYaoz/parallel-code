@@ -150,7 +150,7 @@ export function validateCommand(command: string): void {
     throw new Error('Command must not be empty.');
   }
   // Absolute paths: check directly via filesystem
-  if (command.startsWith('/')) {
+  if (path.isAbsolute(command)) {
     try {
       fs.accessSync(command, fs.constants.X_OK);
       return;
@@ -160,9 +160,10 @@ export function validateCommand(command: string): void {
       );
     }
   }
-  // Bare names: resolve via `which` (execFileSync — no shell interpolation)
+  // Bare names: resolve via `which`/`where` (execFileSync — no shell interpolation)
   try {
-    execFileSync('which', [command], { encoding: 'utf8', timeout: 3000 });
+    const lookup = process.platform === 'win32' ? 'where' : 'which';
+    execFileSync(lookup, [command], { encoding: 'utf8', timeout: 3000 });
   } catch {
     throw new Error(
       `Command '${command}' not found in PATH. Make sure it is installed and available in your terminal.`,
@@ -196,6 +197,23 @@ export function buildPtySpawnEnv(rendererEnv: Record<string, string> = {}): Reco
   return spawnEnv;
 }
 
+/**
+ * Maps a host path to its path *inside* the Linux container. On macOS/Linux
+ * the container mirrors the host path verbatim, so this is the identity.
+ * On Windows, the container is always Linux, so a native `C:\Users\foo\bar`
+ * host path — valid only as the *source* of a `docker -v` bind mount, which
+ * Docker Desktop auto-translates — must be paired with a Linux-shaped
+ * destination. Docker Desktop's WSL2 backend mounts host drives at
+ * `/mnt/<lowercase-drive-letter>/...`, so that's what we target here too.
+ */
+function toContainerPath(hostPath: string): string {
+  if (process.platform !== 'win32') return hostPath;
+  const match = /^([a-zA-Z]):\\(.*)$/.exec(hostPath);
+  if (!match) return hostPath.replace(/\\/g, '/');
+  const [, drive, rest] = match;
+  return `/mnt/${drive.toLowerCase()}/${rest.replace(/\\/g, '/')}`;
+}
+
 /** Returns `-v mainGitDir:mainGitDir` mount args so git works inside the container.
  *  Walks up from startPath to find the .git file (worktrees may be nested directories). */
 function resolveWorktreeGitDirMount(startPath: string): string[] {
@@ -213,7 +231,7 @@ function resolveWorktreeGitDirMount(startPath: string): string[] {
         let candidate = path.resolve(match[1].trim());
         while (true) {
           if (fs.existsSync(path.join(candidate, 'objects'))) {
-            return ['-v', `${candidate}:${candidate}`];
+            return ['-v', `${candidate}:${toContainerPath(candidate)}`];
           }
           const parent = path.dirname(candidate);
           if (parent === candidate) return [];
@@ -258,6 +276,7 @@ function buildPtySpawnSpec(
 
   const name = containerName as string;
   const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
+  const containerCwd = toContainerPath(cwd);
   return {
     spawnCommand: 'docker',
     spawnArgs: [
@@ -277,19 +296,23 @@ function buildPtySpawnSpec(
       '--user',
       `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
       ...(args.dockerMountWorktreeParent
-        ? ['-v', `${path.dirname(cwd)}:${path.dirname(cwd)}`, ...resolveWorktreeGitDirMount(cwd)]
+        ? [
+            '-v',
+            `${path.dirname(cwd)}:${toContainerPath(path.dirname(cwd))}`,
+            ...resolveWorktreeGitDirMount(cwd),
+          ]
         : []),
       '-v',
-      `${cwd}:${cwd}`,
+      `${cwd}:${containerCwd}`,
       '-w',
-      cwd,
+      containerCwd,
       ...buildDockerEnvFlags(spawnEnv),
       '-e',
       `HOME=${DOCKER_CONTAINER_HOME}/agent-${args.agentId}`,
       ...buildDockerCredentialMounts(
         args.command,
         args.shareDockerAgentAuth === true,
-        cwd,
+        containerCwd,
         `${DOCKER_CONTAINER_HOME}/agent-${args.agentId}`,
       ),
       image,
@@ -444,8 +467,9 @@ export function spawnAgent(win: BrowserWindow, args: SpawnAgentArgs): void {
 
   // Reject commands with shell metacharacters (node-pty uses execvp, but
   // guard against accidental misuse). Allow bare names (resolved via PATH)
-  // and absolute paths.
-  if (/[;&|`$(){}\n]/.test(command)) {
+  // and absolute paths. `%` and `^` are also blocked since they carry
+  // special meaning to cmd.exe (env-var expansion and the escape char).
+  if (/[;&|`$(){}\n%^]/.test(command)) {
     throw new Error(`Command contains disallowed characters: ${command}`);
   }
 
@@ -700,7 +724,13 @@ function buildDockerEnvFlags(env: Record<string, string>): string[] {
   const flags: string[] = [];
   for (const [key, value] of Object.entries(env)) {
     if (!isBlockedDockerEnvKey(key) && value !== undefined) {
-      flags.push('-e', `${key}=${value}`);
+      // GOOGLE_APPLICATION_CREDENTIALS must point at the file's path *inside*
+      // the container, matching the mount destination in
+      // buildDockerCredentialMounts (a host/container path split only on
+      // Windows, where the two differ).
+      const forwardedValue =
+        key === 'GOOGLE_APPLICATION_CREDENTIALS' ? toContainerPath(value) : value;
+      flags.push('-e', `${key}=${forwardedValue}`);
     }
   }
   return flags;
@@ -794,10 +824,12 @@ function buildDockerCredentialMounts(
   mountIfExists(`${home}/.netrc`, `${containerHome}/.netrc`);
 
   // Google Application Credentials file (for Vertex AI / gcloud) — mounted
-  // at its original path since the env var points there.
+  // at the container-side path the forwarded env var points to (see
+  // buildDockerEnvFlags), which is the same as the host path except on
+  // Windows.
   const googleCredsFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (googleCredsFile) {
-    mountIfExists(googleCredsFile, googleCredsFile);
+    mountIfExists(googleCredsFile, toContainerPath(googleCredsFile));
   }
 
   // When "Share agent auth across Linux containers" is enabled, bind-mount a

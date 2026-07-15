@@ -737,7 +737,7 @@ export async function createWorktree(
   baseBranch?: string,
   forceClean = false,
 ): Promise<{ path: string; branch: string }> {
-  const worktreePath = `${repoRoot}/.worktrees/${branchName}`;
+  const worktreePath = path.join(repoRoot, '.worktrees', branchName);
 
   if (forceClean) {
     // Clean up stale worktree/branch from a previous session that wasn't properly removed
@@ -806,7 +806,14 @@ export async function createWorktree(
     try {
       if (!fs.existsSync(source)) continue;
       if (fs.existsSync(target)) continue;
-      fs.symlinkSync(source, target);
+      if (process.platform === 'win32' && fs.statSync(source).isDirectory()) {
+        // Directory junctions work without Administrator rights or Developer
+        // Mode, unlike Windows symbolic links (which `fs.symlinkSync` would
+        // otherwise need for a plain directory link).
+        fs.symlinkSync(source, target, 'junction');
+      } else {
+        fs.symlinkSync(source, target);
+      }
       createdSymlinks.push(name);
     } catch (err) {
       console.warn(`Failed to symlink directory '${name}' into worktree:`, err);
@@ -987,7 +994,7 @@ export async function removeWorktree(
   branchName: string,
   deleteBranch: boolean,
 ): Promise<void> {
-  const worktreePath = `${repoRoot}/.worktrees/${branchName}`;
+  const worktreePath = path.join(repoRoot, '.worktrees', branchName);
 
   if (!fs.existsSync(repoRoot)) return;
 
