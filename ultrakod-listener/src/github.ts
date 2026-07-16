@@ -44,7 +44,10 @@ export async function listQueuedTasks(): Promise<QueuedTask[]> {
     `${GITHUB_API}/repos/${owner}/${repo}/issues?state=open&labels=queued-task&per_page=100`,
     { headers: authHeaders() },
   );
-  if (!res.ok) throw new Error(`Failed to list issues: HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to list issues: HTTP ${res.status}${body ? ` — ${body}` : ''}`);
+  }
 
   const issues = (await res.json()) as Array<{
     number: number;
@@ -123,7 +126,12 @@ let cachedDefaultBranch: string | null = null;
 async function getDefaultBranch(owner: string, repo: string): Promise<string> {
   if (cachedDefaultBranch) return cachedDefaultBranch;
   const res = await fetch(`${GITHUB_API}/repos/${owner}/${repo}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(`Failed to look up default branch: HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(
+      `Failed to look up default branch: HTTP ${res.status}${body ? ` — ${body}` : ''}`,
+    );
+  }
   const data = (await res.json()) as { default_branch: string };
   cachedDefaultBranch = data.default_branch;
   return cachedDefaultBranch;
