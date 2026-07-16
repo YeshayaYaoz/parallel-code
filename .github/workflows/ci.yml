@@ -39,6 +39,40 @@ jobs:
       - name: Test
         run: npm test
 
+  ultrakod-listener:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ultrakod-listener/package-lock.json
+
+      - run: npm ci
+        working-directory: ultrakod-listener
+
+      - name: Verify committed registry.ts matches electron/ultrakod/registry.ts
+        run: |
+          npm run sync-registry --prefix ultrakod-listener
+          git diff --exit-code -- ultrakod-listener/src/registry.ts || {
+            echo "::error::ultrakod-listener/src/registry.ts is stale. Run 'npm run sync-registry' in ultrakod-listener/ and commit the result." >&2
+            exit 1
+          }
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: ultrakod-listener
+
+      - name: Test
+        run: npm test
+        working-directory: ultrakod-listener
+
+      - name: Build
+        run: npm run build
+        working-directory: ultrakod-listener
+
   windows-test:
     runs-on: windows-latest
     steps:

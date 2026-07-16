@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 // Copies the canonical model registry (electron/ultrakod/registry.ts) into
-// this package's own src/, so there's exactly one source of truth instead of
-// two hand-maintained copies. Runs automatically before build/test/dev/
-// typecheck (see package.json) — you never need to run this by hand, and the
-// generated file is gitignored so a stale copy can never accidentally get
-// committed.
+// this package's own src/registry.ts, so there's exactly one hand-maintained
+// source of truth instead of two. Runs automatically before test/dev/
+// typecheck (see package.json).
 //
-// This package still needs its own physical copy of the file (rather than
-// importing electron/ultrakod/registry.ts directly) because it deploys
-// independently — e.g. to Railway with its Root Directory set to
-// ultrakod-listener/ — and a cross-directory import would make that deploy
-// depend on exactly how much of the repo tree the platform's build actually
-// exposes at that Root Directory, which isn't something to assume.
+// src/registry.ts IS committed (not gitignored) — deliberately. Railway's
+// Root Directory setting for this service scopes its build to just
+// ultrakod-listener/, so ../../electron/ultrakod/registry.ts genuinely does
+// not exist in that build's filesystem (confirmed by a real failed deploy,
+// not assumption) — `build`/`start` cannot depend on this script running.
+// Instead: run `npm run sync-registry` locally after editing the canonical
+// file and commit the result. CI (.github/workflows/ci.yml, which checks out
+// the full repo) re-runs this script and fails the build if the committed
+// copy doesn't match the source, so drift can't silently ship.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';

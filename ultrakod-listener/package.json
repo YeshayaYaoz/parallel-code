@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "sync-registry": "node scripts/sync-registry.mjs",
-    "build": "npm run sync-registry && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "npm run sync-registry && tsx src/index.ts",
     "test": "npm run sync-registry && vitest run",

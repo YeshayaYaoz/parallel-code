@@ -98,13 +98,15 @@ cron tick. It's the "hands" for actual repo edits — that's still
   fetches during registry research (see `src/registry.ts`'s header comment).
   A wrong slug surfaces as an HTTP 404 from that provider, not silent
   misbehavior; check `src/providers/gemini.ts` / `mistral.ts` if that happens.
-- **`src/registry.ts` is a generated file, not hand-maintained.** The single
-  source of truth is `electron/ultrakod/registry.ts` (used by the desktop
-  app's own `ultrakod` CLI); `scripts/sync-registry.mjs` copies it in here
-  automatically before every `build`/`test`/`dev`/`typecheck`, so it's always
-  current and gitignored — never edit `src/registry.ts` directly, edit the
-  source file instead. It's a copy rather than a cross-directory import
-  because this package deploys independently (e.g. Railway, Root Directory
-  set to `ultrakod-listener/`), and a plain file copy at build time doesn't
-  depend on assumptions about how much of the repo tree that build actually
-  exposes at the Root Directory — an npm workspace/shared-package import would.
+- **`src/registry.ts` is a synced copy, not hand-maintained — but it IS
+  committed.** The single source of truth is `electron/ultrakod/registry.ts`
+  (used by the desktop app's own `ultrakod` CLI). Never edit
+  `src/registry.ts` directly: edit the source file, then run
+  `npm run sync-registry` here and commit the result. It's committed rather
+  than generated at Railway build time because Railway's Root Directory
+  setting for this service scopes its build to `ultrakod-listener/` only —
+  `../../electron/ultrakod/registry.ts` genuinely isn't there (confirmed by a
+  failed deploy, not assumption), so `build`/`start` can't depend on reaching
+  outside this directory. CI (`.github/workflows/ci.yml`) re-runs the sync
+  and fails if the committed copy has drifted from the source, so a forgotten
+  sync can't silently ship.
