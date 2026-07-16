@@ -145,7 +145,7 @@ export function markCliTaskFailedAttempt(id: string, error: string, maxAttempts:
 // --- HTTP layer -------------------------------------------------------
 
 function isAuthorized(req: IncomingMessage): boolean {
-  const token = process.env.CLI_QUEUE_TOKEN;
+  const token = process.env.ULTRAKOD_CLI_KEY;
   if (!token) return false; // feature is disabled until a token is configured
   const header = req.headers.authorization;
   if (!header) return false;
@@ -191,7 +191,7 @@ function isValidSubmission(body: unknown): body is CliTaskSubmission {
 /**
  * Handles any request under /cli-tasks; returns false for anything else so
  * the caller (index.ts) can fall through to its default health-check
- * response. All /cli-tasks requests require a valid CLI_QUEUE_TOKEN bearer
+ * response. All /cli-tasks requests require a valid ULTRAKOD_CLI_KEY bearer
  * token — this is the only entry point that can spend real provider quota
  * on the user's behalf without going through GitHub at all.
  */

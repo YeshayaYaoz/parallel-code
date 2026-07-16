@@ -24,7 +24,7 @@ provider-adapter machinery:
   it once a suitable model is available (possibly hours later, even with
   your computer off), and the app resends the answer into that same terminal
   session next time it's running. Auth is a single shared bearer token
-  (`CLI_QUEUE_TOKEN`), not a GitHub PAT. See `src/cli-tasks.ts`.
+  (`ULTRAKOD_CLI_KEY`), not a GitHub PAT. See `src/cli-tasks.ts`.
 
 ### GitHub-issue queue
 
@@ -78,7 +78,7 @@ provider-adapter machinery:
    | `DEEPSEEK_API_KEY`        | no                                                  | enables DeepSeek as a Q&A fallback/candidate                                                                                                                                |
    | `MISTRAL_API_KEY`         | no                                                  | enables Mistral as a Q&A fallback/candidate                                                                                                                                 |
    | `POLL_INTERVAL_MS`        | no (default 10000)                                  | how often to check the queue                                                                                                                                                |
-   | `CLI_QUEUE_TOKEN`         | no (required for the live CLI queue)                | shared bearer secret the Parallel Code app authenticates `/cli-tasks` requests with — generate any long random string and paste it into both Railway and the app's settings |
+   | `ULTRAKOD_CLI_KEY`        | no (required for the live CLI queue)                | shared bearer secret the Parallel Code app authenticates `/cli-tasks` requests with — generate any long random string and paste it into both Railway and the app's settings |
    | `CLI_TASKS_DIR`           | no (default `data/cli-tasks` under the working dir) | where queued CLI-task JSON files are stored — see the volume note below                                                                                                     |
 
    Any provider without its API key configured is simply excluded from

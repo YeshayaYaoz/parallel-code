@@ -11,7 +11,7 @@ let mod: typeof import('./cli-tasks.js');
 beforeEach(async () => {
   dir = mkdtempSync(path.join(tmpdir(), 'cli-tasks-test-'));
   process.env.CLI_TASKS_DIR = dir;
-  process.env.CLI_QUEUE_TOKEN = 'test-token';
+  process.env.ULTRAKOD_CLI_KEY = 'test-token';
   vi.resetModules();
   mod = await import('./cli-tasks.js');
 });
@@ -19,7 +19,7 @@ beforeEach(async () => {
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
   delete process.env.CLI_TASKS_DIR;
-  delete process.env.CLI_QUEUE_TOKEN;
+  delete process.env.ULTRAKOD_CLI_KEY;
 });
 
 function submission(overrides: Partial<CliTaskSubmission> = {}): CliTaskSubmission {
