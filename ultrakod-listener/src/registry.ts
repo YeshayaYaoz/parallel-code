@@ -1,5 +1,12 @@
 // Model registry — static model metadata for routing decisions.
 //
+// NOTE: this is a deliberate standalone copy of electron/ultrakod/registry.ts.
+// This package deploys independently (e.g. to Railway, with its Root Directory
+// set to ultrakod-listener/), so it can't depend on files outside its own
+// directory without complicating that deploy. Keep the two in sync by hand
+// when either changes — if they drift often enough to be annoying, that's the
+// signal to move both into a shared npm workspace package instead.
+//
 // Pricing research notes (read before trusting these numbers blindly):
 //   - Anthropic: cross-referenced against platform.claude.com pricing structure. High confidence.
 //   - OpenAI, Google, DeepSeek, Mistral: their official pricing pages (openai.com/api/pricing,

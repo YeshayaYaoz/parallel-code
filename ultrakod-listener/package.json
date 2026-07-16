@@ -1,0 +1,21 @@
+{
+  "name": "ultrakod-listener",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Always-on router/queue listener for ultrakod — deploys standalone (e.g. to Railway) separately from the Parallel Code desktop app.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

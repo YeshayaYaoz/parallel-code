@@ -20,11 +20,25 @@ name: Claude Task Queue
 #      (Settings -> Secrets and variables -> Actions -> New repository secret).
 #   3. Open an issue with the `queued-task` label to try it, or run this
 #      workflow manually from the Actions tab.
+#
+# Also triggerable precisely (not just "the oldest queued issue") by passing
+# issue_number/model as workflow_dispatch inputs — this is how the ultrakod
+# listener service drives it when it decides Claude is the right model for a
+# specific task right now, rather than waiting for the next cron tick.
 
 on:
   schedule:
     - cron: '*/15 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Specific issue to process (defaults to the oldest queued-task issue)'
+        required: false
+        type: string
+      model:
+        description: 'Claude model override, e.g. claude-opus-4-8 (defaults to the CLI default)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -55,19 +69,26 @@ jobs:
           gh label create "claude-in-progress" --color "FBCA04" --description "Claude is currently working on this" --force
           gh label create "claude-stuck" --color "B60205" --description "Claude gave up after repeated failures — needs a look" --force
 
-      - name: Find the oldest queued task
+      - name: Find the task to process
         id: find
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_ISSUE: ${{ inputs.issue_number }}
         run: |
           set -euo pipefail
-          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --label "queued-task" --state open \
-            --json number,body,labels --limit 100 --jq '
-              [.[] | select(
-                (.labels | map(.name) | contains(["claude-in-progress"]) | not)
-                and (.labels | map(.name) | contains(["claude-stuck"]) | not)
-              )] | sort_by(.number) | .[0]
-            ')
+          if [ -n "${REQUESTED_ISSUE:-}" ]; then
+            # Driven precisely by the ultrakod listener — fetch that exact issue.
+            issue=$(gh issue view "$REQUESTED_ISSUE" --repo "$GITHUB_REPOSITORY" --json number,body)
+          else
+            # Standalone cron behavior — pick the oldest unclaimed queued issue.
+            issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --label "queued-task" --state open \
+              --json number,body,labels --limit 100 --jq '
+                [.[] | select(
+                  (.labels | map(.name) | contains(["claude-in-progress"]) | not)
+                  and (.labels | map(.name) | contains(["claude-stuck"]) | not)
+                )] | sort_by(.number) | .[0]
+              ')
+          fi
 
           if [ -z "$issue" ] || [ "$issue" = "null" ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -103,7 +124,7 @@ jobs:
             `claude/issue-${{ steps.find.outputs.number }}` and open a pull
             request whose description includes the line
             "Closes #${{ steps.find.outputs.number }}".
-          claude_args: "--max-turns 40"
+          claude_args: "--max-turns 40${{ inputs.model && format(' --model {0}', inputs.model) || '' }}"
 
       - name: On success, unmark in-progress and report
         if: steps.find.outputs.found == 'true' && steps.claude.outcome == 'success'

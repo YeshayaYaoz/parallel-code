@@ -102,7 +102,7 @@ Options:
 Examples:
   ultrakod init --project ./my-app
   ultrakod route --mode balanced
-  ultrakod switch --model claude-opus-4-20250514
+  ultrakod switch --model claude-opus-4-8
   ultrakod summary --summary "Fixing auth bug in login flow"
   ultrakod reset --reset-at 2026-07-16T15:00:00Z
 `);
@@ -112,7 +112,7 @@ function handleInit(args: CLIArgs): void {
   const context = initializeContext(
     args.projectRoot,
     generateProjectId(args.projectRoot),
-    'claude-sonnet-4-20250514',
+    'claude-sonnet-5',
   );
   console.log(`Initialized context for project: ${context.projectId}`);
   console.log(`Active model: ${context.activeModel}`);
@@ -148,7 +148,7 @@ function handleRoute(args: CLIArgs): void {
     context = initializeContext(
       args.projectRoot,
       generateProjectId(args.projectRoot),
-      'claude-sonnet-4-20250514',
+      'claude-sonnet-5',
     );
   }
   const excludeList = args.exclude || [];
@@ -167,7 +167,12 @@ function handleRoute(args: CLIArgs): void {
 
   console.log(`Recommended model for ${args.mode} mode: ${model.name}`);
   console.log(
-    JSON.stringify({ model: model.id, mode: args.mode, cost: model.costPerMillionTokens }),
+    JSON.stringify({
+      model: model.id,
+      mode: args.mode,
+      inputCostPerMillion: model.inputCostPerMillion,
+      outputCostPerMillion: model.outputCostPerMillion,
+    }),
   );
 }
 
@@ -208,7 +213,7 @@ function handleSummary(args: CLIArgs): void {
     context = initializeContext(
       args.projectRoot,
       generateProjectId(args.projectRoot),
-      'claude-sonnet-4-20250514',
+      'claude-sonnet-5',
     );
   }
 
@@ -229,7 +234,7 @@ function handleReset(args: CLIArgs): void {
     context = initializeContext(
       args.projectRoot,
       generateProjectId(args.projectRoot),
-      'claude-sonnet-4-20250514',
+      'claude-sonnet-5',
     );
   }
 
@@ -245,9 +250,15 @@ function handleModels(): void {
 
   for (const model of Object.values(MODEL_REGISTRY)) {
     console.log(`${model.name} (${model.id})`);
-    console.log(`  Provider: ${model.provider}`);
-    console.log(`  Cost: $${model.costPerMillionTokens}/1M tokens`);
-    console.log(`  Max Tokens: ${model.maxTokens}`);
+    console.log(
+      `  Provider: ${model.provider} · Tier: ${model.tier} · Throughput: ${model.throughput}`,
+    );
+    console.log(
+      `  Cost: $${model.inputCostPerMillion}/1M in, $${model.outputCostPerMillion}/1M out`,
+    );
+    console.log(
+      `  Context: ${model.contextWindowTokens.toLocaleString()} tokens · Max output: ${model.maxOutputTokens}`,
+    );
     console.log(`  Strengths: ${model.strengths.join(', ')}`);
     console.log('');
   }

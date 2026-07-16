@@ -15,6 +15,9 @@ export default [
       'node_modules/**',
       '.worktrees/**',
       '.claude/**',
+      // ultrakod-listener is a standalone package (own tsconfig, own build
+      // output) — its dist/ isn't caught by the root-anchored 'dist/**' above.
+      'ultrakod-listener/dist/**',
       // Build config is excluded from electron tsconfig; ignore the config and its test.
       'electron/vite.config.electron.ts',
       'electron/vite.config.electron.test.ts',
@@ -115,6 +118,15 @@ export default [
   // CLI files: allow console.log for user-facing output
   {
     files: ['electron/ultrakod/cli.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
+  // ultrakod-listener is a standalone service — console.log IS its status
+  // logging (viewed via the host's log viewer), not debug output to clean up.
+  {
+    files: ['ultrakod-listener/src/index.ts'],
     rules: {
       'no-console': 'off',
     },
