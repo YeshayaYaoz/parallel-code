@@ -153,6 +153,10 @@ export interface Task {
   landedMetadata?: LandedMetadata;
   mcpStartupStatus?: 'pending' | 'ready' | 'error';
   mcpStartupError?: string;
+  // Live CLI queue: set once a rate-limited terminal input has been
+  // submitted to the ultrakod Railway service; cleared once the answer is
+  // delivered back into the terminal. See src/lib/ultrakod-queue.ts.
+  queuedRailwayTaskId?: string;
 }
 
 export interface Terminal {
@@ -209,6 +213,7 @@ export interface PersistedTask {
   landingReason?: string;
   landingSummary?: string;
   landedMetadata?: LandedMetadata;
+  queuedRailwayTaskId?: string;
 }
 
 export interface PersistedTerminal {

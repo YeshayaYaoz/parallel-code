@@ -161,6 +161,7 @@ function toPersistedTask(task: Task, agentDefs: AgentDef[], collapsed?: boolean)
     landingReason: task.landingReason,
     landingSummary: task.landingSummary,
     landedMetadata: task.landedMetadata,
+    queuedRailwayTaskId: task.queuedRailwayTaskId,
   };
 }
 
@@ -691,6 +692,7 @@ export async function loadState(): Promise<void> {
           landingReason: pt.landingReason,
           landingSummary: pt.landingSummary,
           landedMetadata: pt.landedMetadata,
+          queuedRailwayTaskId: pt.queuedRailwayTaskId,
         };
 
         s.tasks[taskId] = task;
@@ -796,6 +798,7 @@ export async function loadState(): Promise<void> {
           landingReason: pt.landingReason,
           landingSummary: pt.landingSummary,
           landedMetadata: pt.landedMetadata,
+          queuedRailwayTaskId: pt.queuedRailwayTaskId,
         };
 
         s.tasks[taskId] = task;

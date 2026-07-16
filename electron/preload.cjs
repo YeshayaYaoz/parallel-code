@@ -149,6 +149,11 @@ const ALLOWED_CHANNELS = new Set([
   'github_auth_logout',
   'github_list_repos',
   'github_clone_repo',
+  'ultrakod_queue_get_status',
+  'ultrakod_queue_set_config',
+  'ultrakod_queue_clear_config',
+  'ultrakod_queue_submit_task',
+  'ultrakod_queue_poll_task',
 ]);
 
 function isAllowedChannel(channel) {

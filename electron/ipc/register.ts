@@ -98,6 +98,13 @@ import {
   listGitHubRepos,
   cloneGitHubRepo,
 } from './github.js';
+import {
+  getUltrakodQueueStatus,
+  setUltrakodQueueConfig,
+  clearUltrakodQueueConfig,
+  submitCliQueueTask,
+  pollCliQueueTask,
+} from './ultrakod-queue.js';
 import { setMinimaxApiKey } from './ask-code-minimax.js';
 import { getSystemMonospaceFonts } from './system-fonts.js';
 import path from 'path';
@@ -1851,6 +1858,43 @@ export function registerAllHandlers(win: BrowserWindow): void {
     }
     await cloneGitHubRepo(args.cloneUrl, destDir);
     return { destDir };
+  });
+
+  // --- Live CLI queue (ultrakod-listener /cli-tasks — see electron/ipc/ultrakod-queue.ts) ---
+  ipcMain.handle(IPC.UltrakodQueueGetStatus, () => getUltrakodQueueStatus());
+
+  ipcMain.handle(IPC.UltrakodQueueSetConfig, (_e, args) => {
+    assertString(args.baseUrl, 'baseUrl');
+    assertString(args.token, 'token');
+    setUltrakodQueueConfig(args.baseUrl, args.token);
+  });
+
+  ipcMain.handle(IPC.UltrakodQueueClearConfig, () => clearUltrakodQueueConfig());
+
+  ipcMain.handle(IPC.UltrakodQueueSubmitTask, (_e, args) => {
+    assertString(args.taskId, 'taskId');
+    if (args.mode !== 'cheap' && args.mode !== 'balanced' && args.mode !== 'extra') {
+      throw new Error('mode must be cheap, balanced, or extra');
+    }
+    assertString(args.prompt, 'prompt');
+    assertString(args.context?.transcriptExcerpt, 'context.transcriptExcerpt');
+    assertOptionalString(args.context?.gitDiff, 'context.gitDiff');
+    assertOptionalString(args.context?.gitStatus, 'context.gitStatus');
+    return submitCliQueueTask({
+      taskId: args.taskId,
+      mode: args.mode,
+      prompt: args.prompt,
+      context: {
+        transcriptExcerpt: args.context.transcriptExcerpt,
+        gitDiff: args.context.gitDiff,
+        gitStatus: args.context.gitStatus,
+      },
+    });
+  });
+
+  ipcMain.handle(IPC.UltrakodQueuePollTask, (_e, args) => {
+    assertString(args.taskId, 'taskId');
+    return pollCliQueueTask(args.taskId);
   });
 
   // --- Forward window events to renderer ---

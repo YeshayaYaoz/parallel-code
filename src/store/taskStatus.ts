@@ -386,6 +386,33 @@ export function looksLikeQuestion(tail: string): boolean {
   });
 }
 
+/** Patterns indicating the agent's underlying model just hit its usage/rate
+ *  limit. Unlike QUESTION_PATTERNS/TRUST_PATTERNS above, these are NOT yet
+ *  verified against a real captured sample of what Claude Code (or Codex/
+ *  Gemini CLI) actually prints when this happens — they're a best-effort
+ *  starting point, intentionally kept in one small list so they're easy to
+ *  correct once you've seen the real wording. A false negative here just
+ *  means the live-CLI-queue feature doesn't offer to kick in (same as
+ *  today); it doesn't affect normal operation. */
+const RATE_LIMIT_PATTERNS: RegExp[] = [
+  /\busage limit reached\b/i,
+  /\b5[- ]hour limit\b/i,
+  /\brate limit(ed)?\b.*\b(exceed|reach)/i,
+  /\bquota\b.*\bexceed/i,
+  /\byou('| a)ve (hit|reached) (your|the) (usage|rate) limit\b/i,
+];
+
+/** True when recent output looks like the agent's model just hit a usage/
+ *  rate limit. See RATE_LIMIT_PATTERNS' caveat above. */
+export function looksLikeRateLimited(tail: string): boolean {
+  const visible = stripAnsi(tail);
+  const lines = visible.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  return lines.some((line) => {
+    const trimmed = line.trimEnd();
+    return RATE_LIMIT_PATTERNS.some((re) => re.test(trimmed));
+  });
+}
+
 function isAutoHandledTrustQuestion(tail: string): boolean {
   if (!looksLikeTrustDialog(tail)) return false;
   const visible = stripAnsi(tail); // full visible — see looksLikeQuestion for rationale
@@ -451,6 +478,25 @@ function updateQuestionState(agentId: string, hasQuestion: boolean): void {
     if (hasQuestion === prev.has(agentId)) return prev;
     const next = new Set(prev);
     if (hasQuestion) next.add(agentId);
+    else next.delete(agentId);
+    return next;
+  });
+}
+
+// Reactive set of agent IDs whose terminal currently looks rate-limited —
+// drives the "queue this to run remotely once the limit resets?" affordance.
+const [rateLimitedAgents, setRateLimitedAgents] = createSignal<Set<string>>(new Set());
+
+/** True when the agent's terminal currently looks rate-limited. */
+export function isAgentRateLimited(agentId: string): boolean {
+  return rateLimitedAgents().has(agentId);
+}
+
+function updateRateLimitState(agentId: string, isRateLimited: boolean): void {
+  setRateLimitedAgents((prev) => {
+    if (isRateLimited === prev.has(agentId)) return prev;
+    const next = new Set(prev);
+    if (isRateLimited) next.add(agentId);
     else next.delete(agentId);
     return next;
   });
@@ -658,6 +704,7 @@ function analyzeAgentOutput(agentId: string): void {
   }
 
   updateQuestionState(agentId, hasQuestion);
+  updateRateLimitState(agentId, looksLikeRateLimited(rawTail));
 
   // Agent-ready prompt scanning. Uses the tail buffer (always current) so
   // throttled/trailing calls don't miss prompts from intermediate chunks.
@@ -746,6 +793,7 @@ export function markAgentOutput(agentId: string, data: Uint8Array, taskId?: stri
     // the question signal and the task would incorrectly look idle.
     const hasQuestion = looksLikeQuestion(state.outputTailBuffer);
     updateQuestionState(agentId, hasQuestion);
+    updateRateLimitState(agentId, looksLikeRateLimited(state.outputTailBuffer));
 
     // Fire the agentReady callback (used by PromptInput auto-send).
     // The chunkContainsAgentPrompt guard inside tryFireAgentReadyCallback
@@ -801,6 +849,7 @@ export function clearAgentActivity(agentId: string): void {
   agentReadyCallbacks.delete(agentId);
   removeFromActive(agentId);
   updateQuestionState(agentId, false);
+  updateRateLimitState(agentId, false);
 }
 
 // --- Derived status ---

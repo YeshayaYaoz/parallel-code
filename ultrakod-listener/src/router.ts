@@ -18,6 +18,12 @@ import { deepseekAdapter } from './providers/deepseek.js';
 import { mistralAdapter } from './providers/mistral.js';
 import * as gh from './github.js';
 import type { ProviderAdapter, QueuedTask } from './types.js';
+import {
+  listPendingCliTasks,
+  markCliTaskAnswered,
+  markCliTaskFailedAttempt,
+  type CliTaskRecord,
+} from './cli-tasks.js';
 
 const ADAPTERS: Record<Provider, ProviderAdapter> = {
   anthropic: anthropicAdapter,
@@ -96,6 +102,52 @@ export async function processQueueOnce(): Promise<void> {
         await gh.removeLabel(task.number, 'ultrakod-in-progress');
       }
     }
+  }
+}
+
+// Same convention as runQaTask's MAX_QA_RETRIES: cap retries so a
+// persistently-broken task stops silently retrying forever. Unlike the
+// GitHub-issue queue there's no comment thread to spam, but the underlying
+// reason (don't retry a real error forever) is the same.
+const MAX_CLI_TASK_ATTEMPTS = 20;
+
+function buildCliPrompt(task: CliTaskRecord): string {
+  const parts = [task.context.transcriptExcerpt];
+  if (task.context.gitDiff) parts.push(`Git diff:\n${task.context.gitDiff}`);
+  if (task.context.gitStatus) parts.push(`Git status:\n${task.context.gitStatus}`);
+  parts.push(`User: ${task.prompt}`);
+  return parts.join('\n\n');
+}
+
+/**
+ * Processes every currently-pending CLI-queue task once — the live-terminal
+ * counterpart to processQueueOnce() above. Submitted directly by the
+ * Parallel Code desktop app (see cli-tasks.ts) rather than via a GitHub
+ * issue, and always a plain text continuation (no repo access) — a task
+ * needing real file edits is the existing GitHub coding-task path's job,
+ * not this one's; see README "Known limitations".
+ */
+export async function processCliQueueOnce(): Promise<void> {
+  const tasks = listPendingCliTasks();
+
+  for (const task of tasks) {
+    const model = getModelForMode(task.mode, excludedModelIds());
+    if (!model) continue; // nothing available yet — try again next pass
+
+    const response = await ADAPTERS[model.provider].ask(buildCliPrompt(task), model);
+
+    if (response.ok) {
+      markCliTaskAnswered(task.id, response.text, model.name);
+      clearCooldown(model.provider);
+      continue;
+    }
+
+    if (response.quotaExceeded) {
+      markCoolingDown(model.provider, response.resetAt);
+      continue; // leave pending — the next pass will pick the next-best model
+    }
+
+    markCliTaskFailedAttempt(task.id, response.error, MAX_CLI_TASK_ATTEMPTS);
   }
 }
 

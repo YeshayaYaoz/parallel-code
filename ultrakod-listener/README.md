@@ -10,6 +10,24 @@ cron tick. It's the "hands" for actual repo edits — that's still
 
 ## How it works
 
+This service has two independent entry points into the same router/cooldown/
+provider-adapter machinery:
+
+- **The GitHub-issue queue** (below) — manual, works from anywhere (even your
+  phone), and its coding-task path can make real repo edits via
+  `claude-queue.yml`.
+- **The live CLI queue** (`POST /cli-tasks`) — automatic, submitted directly
+  by the Parallel Code desktop app the moment one of its terminal sessions
+  detects a rate limit. It's plain-text continuation only (no repo edits —
+  see "Known limitations"): the app sends the pending input plus a compacted
+  context bundle (recent transcript, git diff/status), this service answers
+  it once a suitable model is available (possibly hours later, even with
+  your computer off), and the app resends the answer into that same terminal
+  session next time it's running. Auth is a single shared bearer token
+  (`CLI_QUEUE_TOKEN`), not a GitHub PAT. See `src/cli-tasks.ts`.
+
+### GitHub-issue queue
+
 1. Open a GitHub issue with the `queued-task` label — that's the queue.
    Optional labels: `mode:cheap` / `mode:balanced` / `mode:extra` (default
    `balanced`), and `coding-task` if it needs repo edits (default: treated as
@@ -49,20 +67,29 @@ cron tick. It's the "hands" for actual repo edits — that's still
    - Start command: `npm start`
 4. Add these as Railway service variables:
 
-   | Variable                  | Required?                | Purpose                                                                                  |
-   | ------------------------- | ------------------------ | ---------------------------------------------------------------------------------------- |
-   | `GITHUB_REPOSITORY`       | yes                      | `owner/repo`, e.g. `yourname/parallel-code`                                              |
-   | `GITHUB_TOKEN`            | yes                      | the PAT from step 1                                                                      |
-   | `CLAUDE_CODE_OAUTH_TOKEN` | yes (for any task)       | from `claude setup-token` — also needed by claude-queue.yml as a repo secret, separately |
-   | `PREFERRED_PROVIDER`      | no (default `anthropic`) | which provider to route back to once available                                           |
-   | `OPENAI_API_KEY`          | no                       | enables OpenAI as a Q&A fallback/candidate                                               |
-   | `GEMINI_API_KEY`          | no                       | enables Gemini as a Q&A fallback/candidate                                               |
-   | `DEEPSEEK_API_KEY`        | no                       | enables DeepSeek as a Q&A fallback/candidate                                             |
-   | `MISTRAL_API_KEY`         | no                       | enables Mistral as a Q&A fallback/candidate                                              |
-   | `POLL_INTERVAL_MS`        | no (default 10000)       | how often to check the queue                                                             |
+   | Variable                  | Required?                                           | Purpose                                                                                                                                                                     |
+   | ------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `GITHUB_REPOSITORY`       | yes                                                 | `owner/repo`, e.g. `yourname/parallel-code`                                                                                                                                 |
+   | `GITHUB_TOKEN`            | yes                                                 | the PAT from step 1                                                                                                                                                         |
+   | `CLAUDE_CODE_OAUTH_TOKEN` | yes (for any task)                                  | from `claude setup-token` — also needed by claude-queue.yml as a repo secret, separately                                                                                    |
+   | `PREFERRED_PROVIDER`      | no (default `anthropic`)                            | which provider to route back to once available                                                                                                                              |
+   | `OPENAI_API_KEY`          | no                                                  | enables OpenAI as a Q&A fallback/candidate                                                                                                                                  |
+   | `GEMINI_API_KEY`          | no                                                  | enables Gemini as a Q&A fallback/candidate                                                                                                                                  |
+   | `DEEPSEEK_API_KEY`        | no                                                  | enables DeepSeek as a Q&A fallback/candidate                                                                                                                                |
+   | `MISTRAL_API_KEY`         | no                                                  | enables Mistral as a Q&A fallback/candidate                                                                                                                                 |
+   | `POLL_INTERVAL_MS`        | no (default 10000)                                  | how often to check the queue                                                                                                                                                |
+   | `CLI_QUEUE_TOKEN`         | no (required for the live CLI queue)                | shared bearer secret the Parallel Code app authenticates `/cli-tasks` requests with — generate any long random string and paste it into both Railway and the app's settings |
+   | `CLI_TASKS_DIR`           | no (default `data/cli-tasks` under the working dir) | where queued CLI-task JSON files are stored — see the volume note below                                                                                                     |
 
    Any provider without its API key configured is simply excluded from
    routing (`isConfigured()` check) — you don't need all of them.
+
+5. **If you're using the live CLI queue** (`POST /cli-tasks`, driven by the
+   Parallel Code app's own terminal sessions rather than GitHub issues):
+   attach a **Railway volume** and mount it at (or so that it contains)
+   `CLI_TASKS_DIR`. Without a volume, queued-but-not-yet-answered tasks are
+   lost on redeploy/restart — unlike cooldown state, this is real pending
+   user input, not something safe to just re-probe.
 
 ## Known limitations (read before relying on this)
 

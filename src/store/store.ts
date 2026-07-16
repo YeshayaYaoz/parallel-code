@@ -170,6 +170,7 @@ export {
   rescheduleTaskStatusPolling,
 } from './taskStatus';
 export type { TaskAttentionState, TaskDotStatus } from './taskStatus';
+export { startUltrakodQueuePolling, stopUltrakodQueuePolling } from './ultrakodQueuePoller';
 export { showNotification, clearNotification } from './notification';
 export { startPrChecksSubscription, getPrChecks, type PrChecksState } from './pr-checks';
 export { getMergedTasksTodayCount, getMergedLineTotals } from './completion';

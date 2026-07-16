@@ -243,6 +243,33 @@ describe('landing state persistence', () => {
   });
 });
 
+describe('live CLI queue persistence', () => {
+  it('hydrates a pending queuedRailwayTaskId', async () => {
+    const def = agentDef();
+    mockInvoke.mockResolvedValueOnce(
+      JSON.stringify({
+        projects: [{ id: 'project-1', name: 'Repo', path: '/repo', color: 'hsl(0, 70%, 75%)' }],
+        lastProjectId: 'project-1',
+        lastAgentId: null,
+        taskOrder: ['task-1'],
+        collapsedTaskOrder: [],
+        tasks: {
+          'task-1': {
+            ...persistedTask(def),
+            queuedRailwayTaskId: 'cli-task-abc123',
+          },
+        },
+        activeTaskId: 'task-1',
+        sidebarVisible: true,
+      }),
+    );
+
+    await loadState();
+
+    expect(store.tasks['task-1'].queuedRailwayTaskId).toBe('cli-task-abc123');
+  });
+});
+
 describe('PR URL persistence', () => {
   it('persists task PR URLs', async () => {
     setStore('taskOrder', ['task-1']);

@@ -32,6 +32,7 @@ import type { Task } from '../store/types';
 import type { AgentDef } from '../ipc/types';
 import type { PromptInputHandle } from './PromptInput';
 import { buildTaskAgentArgs, isResumeArgsFailure } from '../lib/agent-args';
+import { RateLimitQueueBanner } from './RateLimitQueueBanner';
 
 function aiTerminalPanelId(agentId: string): string {
   return `ai-terminal:${agentId}`;
@@ -583,6 +584,7 @@ function AgentTerminalPane(props: {
                 </Show>
               </div>
             </Show>
+            <RateLimitQueueBanner taskId={props.task.id} agentId={a().id} />
             <Show when={`${a().id}:${a().generation}`} keyed>
               <TerminalView
                 taskId={props.task.id}

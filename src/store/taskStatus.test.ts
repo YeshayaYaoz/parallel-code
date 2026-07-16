@@ -86,10 +86,12 @@ import {
   normalizeForComparison,
   normalizeCurrentFrame,
   looksLikeQuestion,
+  looksLikeRateLimited,
   isTrustQuestionAutoHandled,
   isAgentTrustQuestionAutoHandled,
   isAutoTrustSettling,
   isAgentAskingQuestion,
+  isAgentRateLimited,
   isAgentBracketedPasteEnabled,
   getTaskAttentionState,
   getTaskDotStatus,
@@ -487,6 +489,35 @@ describe('looksLikeQuestion', () => {
     // returns not-ready and the question must stay detected (box stays guarded).
     const liveDialog = ['Do you want to proceed?', '❯ 1. Yes', '  2. No'].join('\n');
     expect(looksLikeQuestion(liveDialog)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// looksLikeRateLimited
+// ---------------------------------------------------------------------------
+describe('looksLikeRateLimited', () => {
+  it('returns false for empty input', () => {
+    expect(looksLikeRateLimited('')).toBe(false);
+  });
+
+  it('returns false for ordinary agent output', () => {
+    expect(looksLikeRateLimited('Reading file src/index.ts...')).toBe(false);
+  });
+
+  it('detects a "usage limit reached" message', () => {
+    expect(looksLikeRateLimited('Claude usage limit reached. Resets at 9pm.')).toBe(true);
+  });
+
+  it('detects a "5-hour limit" message', () => {
+    expect(looksLikeRateLimited('5-hour limit reached for this account')).toBe(true);
+  });
+
+  it('detects a generic rate-limit-exceeded phrasing', () => {
+    expect(looksLikeRateLimited('Error: rate limit exceeded, try again later')).toBe(true);
+  });
+
+  it('detects a generic quota-exceeded phrasing', () => {
+    expect(looksLikeRateLimited('Your quota has been exceeded for this billing period')).toBe(true);
   });
 });
 
@@ -899,6 +930,17 @@ describe('task attention state', () => {
     markAgentOutput('agent-1', new TextEncoder().encode('\r❯\ropus · /x · ctx:1k/200k'), 'task-1');
 
     expect(isAgentAskingQuestion('agent-1')).toBe(false);
+  });
+
+  it('detects and clears rate-limit state on an agent', () => {
+    setMockTask('task-1', { agentIds: ['agent-1'] });
+    setMockAgent('agent-1', { status: 'running' });
+
+    markAgentOutput('agent-1', new TextEncoder().encode('Claude usage limit reached.'), 'task-1');
+    expect(isAgentRateLimited('agent-1')).toBe(true);
+
+    clearAgentActivity('agent-1');
+    expect(isAgentRateLimited('agent-1')).toBe(false);
   });
 });
 

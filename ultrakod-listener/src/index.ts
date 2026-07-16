@@ -1,6 +1,7 @@
 import { createServer } from 'http';
-import { processQueueOnce } from './router.js';
+import { processQueueOnce, processCliQueueOnce } from './router.js';
 import { unavailableProviderIds, justRecovered } from './cooldowns.js';
+import { handleCliTasksRequest } from './cli-tasks.js';
 
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS) || 10_000;
 const PORT = Number(process.env.PORT) || 3000;
@@ -23,6 +24,7 @@ async function loop(): Promise<void> {
     try {
       logRecoveries();
       await processQueueOnce();
+      await processCliQueueOnce();
     } catch (err) {
       console.error('[ultrakod] loop iteration failed:', err);
     }
@@ -37,9 +39,12 @@ function sleep(ms: number): Promise<void> {
 // Minimal health-check server — Railway (like most PaaS) expects a service to
 // bind a port and answer HTTP, even for a background-worker-shaped app like
 // this one whose real work is the poll loop below, not request handling.
-createServer((_req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('ultrakod-listener is running\n');
+createServer((req, res) => {
+  void handleCliTasksRequest(req, res).then((handled) => {
+    if (handled) return;
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ultrakod-listener is running\n');
+  });
 }).listen(PORT, () => {
   console.log(`[ultrakod] health server listening on :${PORT}`);
 });

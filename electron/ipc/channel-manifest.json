@@ -144,5 +144,10 @@
   "GitHubAuthStatus": "github_auth_status",
   "GitHubAuthLogout": "github_auth_logout",
   "GitHubListRepos": "github_list_repos",
-  "GitHubCloneRepo": "github_clone_repo"
+  "GitHubCloneRepo": "github_clone_repo",
+  "UltrakodQueueGetStatus": "ultrakod_queue_get_status",
+  "UltrakodQueueSetConfig": "ultrakod_queue_set_config",
+  "UltrakodQueueClearConfig": "ultrakod_queue_clear_config",
+  "UltrakodQueueSubmitTask": "ultrakod_queue_submit_task",
+  "UltrakodQueuePollTask": "ultrakod_queue_poll_task"
 }
