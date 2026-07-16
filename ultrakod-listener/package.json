@@ -11,7 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.210"
+  },
   "devDependencies": {
     "@types/node": "^25.3.0",
     "tsx": "^4.19.2",

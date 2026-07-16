@@ -30,9 +30,13 @@ export const anthropicAdapter: ProviderAdapter = {
   isConfigured: () => Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN),
   async ask(prompt: string, model: ModelInfo): Promise<ProviderResponse> {
     try {
+      // `@anthropic-ai/claude-code` is a local (non-global) dependency here —
+      // its `claude` binary lands in node_modules/.bin, not on PATH, so it's
+      // invoked through npx (which resolves local project binaries) rather
+      // than assuming a bare `claude` is runnable directly.
       const { stdout } = await execFileAsync(
-        'claude',
-        ['-p', prompt, '--output-format', 'text', '--model', model.id],
+        'npx',
+        ['claude', '-p', prompt, '--output-format', 'text', '--model', model.id],
         {
           env: process.env,
           timeout: 5 * 60 * 1000,
