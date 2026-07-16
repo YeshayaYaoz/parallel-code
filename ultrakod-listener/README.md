@@ -98,8 +98,13 @@ cron tick. It's the "hands" for actual repo edits — that's still
   fetches during registry research (see `src/registry.ts`'s header comment).
   A wrong slug surfaces as an HTTP 404 from that provider, not silent
   misbehavior; check `src/providers/gemini.ts` / `mistral.ts` if that happens.
-- **`src/registry.ts` is a deliberate standalone copy** of
-  `electron/ultrakod/registry.ts`, not a shared import — this package deploys
-  independently, so it can't reach outside its own directory without
-  complicating the Railway build. Keep them in sync by hand; if that gets
-  annoying, that's the signal to extract a shared workspace package instead.
+- **`src/registry.ts` is a generated file, not hand-maintained.** The single
+  source of truth is `electron/ultrakod/registry.ts` (used by the desktop
+  app's own `ultrakod` CLI); `scripts/sync-registry.mjs` copies it in here
+  automatically before every `build`/`test`/`dev`/`typecheck`, so it's always
+  current and gitignored — never edit `src/registry.ts` directly, edit the
+  source file instead. It's a copy rather than a cross-directory import
+  because this package deploys independently (e.g. Railway, Root Directory
+  set to `ultrakod-listener/`), and a plain file copy at build time doesn't
+  depend on assumptions about how much of the repo tree that build actually
+  exposes at the Root Directory — an npm workspace/shared-package import would.

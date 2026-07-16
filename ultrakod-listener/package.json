@@ -5,11 +5,12 @@
   "description": "Always-on router/queue listener for ultrakod — deploys standalone (e.g. to Railway) separately from the Parallel Code desktop app.",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "sync-registry": "node scripts/sync-registry.mjs",
+    "build": "npm run sync-registry && tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "dev": "npm run sync-registry && tsx src/index.ts",
+    "test": "npm run sync-registry && vitest run",
+    "typecheck": "npm run sync-registry && tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.210"

@@ -31,3 +31,8 @@ docs/
 
 # Ultrakod local context (machine-specific paths, not for repo)
 .ultrakod/
+
+# Generated at build time from electron/ultrakod/registry.ts (the single
+# source of truth) by ultrakod-listener/scripts/sync-registry.mjs — never
+# hand-edit or commit this copy.
+/ultrakod-listener/src/registry.ts

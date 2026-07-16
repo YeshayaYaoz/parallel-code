@@ -123,6 +123,25 @@ export default [
     },
   },
 
+  // Plain Node build scripts (.mjs): not TypeScript, so no-undef needs actual
+  // Node globals configured rather than relying on typescript-eslint to
+  // disable it, and console.log IS these scripts' progress output. Scoped to
+  // ultrakod-listener specifically — the repo's other scripts/*.mjs files
+  // already declare their own globals via inline `/* global ... */` comments.
+  {
+    files: ['ultrakod-listener/scripts/**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
   // ultrakod-listener is a standalone service — console.log IS its status
   // logging (viewed via the host's log viewer), not debug output to clean up.
   {
