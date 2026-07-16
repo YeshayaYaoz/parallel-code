@@ -3,9 +3,9 @@
 // it without a manual reinstall.
 //
 // Auto-update only works for packaged builds that have an in-place update
-// channel: macOS (signed) and the Linux AppImage. A dev run or the Linux
-// `deb` target has no channel, so we report `unsupported` rather than letting
-// electron-updater throw.
+// channel: macOS (signed), the Linux AppImage, and the Windows NSIS installer.
+// A dev run, the Linux `deb` target, or the Windows portable build has no
+// channel, so we report `unsupported` rather than letting electron-updater throw.
 
 import { app, type BrowserWindow } from 'electron';
 import electronUpdater from 'electron-updater';
@@ -47,12 +47,16 @@ export interface UpdateStatus {
 
 // The Linux AppImage runtime sets APPIMAGE to the mounted image path. Its
 // absence on Linux means a non-updatable target (e.g. an installed `.deb`).
+// Likewise, electron-builder's Windows "portable" runtime sets
+// PORTABLE_EXECUTABLE_DIR — that single-file target has no installer to
+// update in place, unlike the NSIS-installed target.
 // `app` is undefined when this module is loaded outside an Electron runtime
 // (e.g. a unit test), so guard every access.
 function isAutoUpdateSupported(): boolean {
   if (!app?.isPackaged) return false;
   if (process.platform === 'darwin') return true;
   if (process.platform === 'linux') return !!process.env.APPIMAGE;
+  if (process.platform === 'win32') return !process.env.PORTABLE_EXECUTABLE_DIR;
   return false;
 }
 

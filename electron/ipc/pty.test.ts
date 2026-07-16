@@ -266,6 +266,35 @@ describe('spawnAgent docker mode', () => {
     expect(volumeFlags).toContain(`${cwd}:${cwd}`);
   });
 
+  it('maps -w and the cwd mount to a WSL2-style container path on Windows', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    try {
+      const cwd = 'C:\\Users\\dev\\project\\.worktrees\\task';
+      spawnAgent(createMockWindow(), buildSpawnArgs({ cwd, dockerMountWorktreeParent: false }));
+      const { args } = getLastSpawnCall();
+      const wIdx = args.indexOf('-w');
+      expect(args[wIdx + 1]).toBe('/mnt/c/Users/dev/project/.worktrees/task');
+      const volumeFlags = getFlagValues(args, '-v');
+      expect(volumeFlags).toContain(`${cwd}:/mnt/c/Users/dev/project/.worktrees/task`);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('translates a forwarded GOOGLE_APPLICATION_CREDENTIALS path on Windows', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.stubEnv('GOOGLE_APPLICATION_CREDENTIALS', 'C:\\Users\\dev\\gcloud\\creds.json');
+    try {
+      spawnAgent(createMockWindow(), buildSpawnArgs({}));
+      const envFlags = getFlagValues(getLastSpawnCall().args, '-e');
+      expect(envFlags).toContain(
+        'GOOGLE_APPLICATION_CREDENTIALS=/mnt/c/Users/dev/gcloud/creds.json',
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
   it('injects a per-agent HOME under /tmp into docker run args', () => {
     vi.stubEnv('HOME', '/Users/tester');
 
@@ -838,6 +867,157 @@ describe('validateCommand', () => {
 
   it('throws for a whitespace-only command string', () => {
     expect(() => validateCommand('   ')).toThrow(/must not be empty/);
+  });
+
+  it('resolves bare commands via `where` on win32', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    try {
+      validateCommand('sh');
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'where',
+        ['sh'],
+        expect.objectContaining({ timeout: 3000 }),
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+});
+
+describe('spawnAgent — disallowed command characters', () => {
+  it('rejects commands containing the cmd.exe env-expansion character', () => {
+    expect(() => spawnAgent(createMockWindow(), buildSpawnArgs({ command: 'foo%PATH%' }))).toThrow(
+      /disallowed characters/,
+    );
+  });
+
+  it('rejects commands containing the cmd.exe escape character', () => {
+    expect(() => spawnAgent(createMockWindow(), buildSpawnArgs({ command: 'foo^bar' }))).toThrow(
+      /disallowed characters/,
+    );
+  });
+});
+
+describe('spawnAgent — Windows npm .cmd shim spawn safety', () => {
+  function mockWhereResolvesTo(resolvedPath: string): void {
+    mockWhereOutputs(`${resolvedPath}\r\n`);
+  }
+
+  /** Mock `where claude` to emit raw multi-line output (one path per line). */
+  function mockWhereOutputs(output: string): void {
+    // validateCommand() and resolveWindowsSpawnTarget() each independently
+    // call `where` — mockImplementation (not -Once) so both calls resolve.
+    mockExecFileSync.mockImplementation((cmd: string, args?: string[]) => {
+      if (cmd === 'where' && args?.[0] === 'claude') return output;
+      return '';
+    });
+  }
+
+  it('spawns a resolved native .exe directly, with args left as an array', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereResolvesTo('C:\\Program Files\\claude\\claude.exe');
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({ command: 'claude', args: ['--print', 'hello'], dockerMode: false }),
+      );
+      const { command, args } = getLastSpawnCall();
+      expect(command).toBe('C:\\Program Files\\claude\\claude.exe');
+      expect(args).toEqual(['--print', 'hello']);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('picks the .cmd shim when `where` lists the extensionless npm script first', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    // Real-world npm layout: three files in the same dir. `where` emits the
+    // extensionless Git-Bash script FIRST — which CreateProcess can't run. We
+    // must skip it and route through the .cmd shim instead.
+    mockWhereOutputs(
+      'C:\\Users\\dev\\AppData\\Roaming\\npm\\claude\r\n' +
+        'C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.cmd\r\n' +
+        'C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.ps1\r\n',
+    );
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({ command: 'claude', args: ['--print', 'hello'], dockerMode: false }),
+      );
+      const lastCall = mockPtySpawn.mock.lastCall as [string, string[] | string, unknown];
+      const [command, commandLine] = lastCall;
+      expect(command).toBe('cmd.exe');
+      expect(typeof commandLine).toBe('string');
+      expect(commandLine).toContain('claude.cmd');
+      // The extensionless script must never be the spawn target.
+      expect(commandLine).not.toMatch(/npm\\claude"/);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('prefers a native .exe over a .cmd shim when both are on PATH', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereOutputs(
+      'C:\\Users\\dev\\AppData\\Roaming\\npm\\claude\r\n' +
+        'C:\\Program Files\\claude\\claude.exe\r\n' +
+        'C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.cmd\r\n',
+    );
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({ command: 'claude', args: ['--print', 'hello'], dockerMode: false }),
+      );
+      const { command, args } = getLastSpawnCall();
+      // A real .exe is spawned directly (no cmd.exe routing), args stay an array.
+      expect(command).toBe('C:\\Program Files\\claude\\claude.exe');
+      expect(args).toEqual(['--print', 'hello']);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('routes an npm .cmd shim through cmd.exe as a pre-escaped string, not an array', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereResolvesTo('C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.cmd');
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({ command: 'claude', args: ['--print', 'hello'], dockerMode: false }),
+      );
+      const lastCall = mockPtySpawn.mock.lastCall as [string, string[] | string, unknown];
+      const [command, commandLine] = lastCall;
+      expect(command).toBe('cmd.exe');
+      expect(typeof commandLine).toBe('string');
+      expect(commandLine).toMatch(/^\/d \/s \/c "/);
+      expect(commandLine).toContain('claude.cmd');
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('neutralizes cmd.exe metacharacters in an argument instead of letting them act as operators', () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockWhereResolvesTo('C:\\Users\\dev\\AppData\\Roaming\\npm\\claude.cmd');
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({
+          command: 'claude',
+          args: ['--print', 'hello & calc.exe'],
+          dockerMode: false,
+        }),
+      );
+      const lastCall = mockPtySpawn.mock.lastCall as unknown as [string, string, unknown];
+      const commandLine = lastCall[1];
+      // The literal, unescaped operator must never appear — every cmd.exe
+      // metacharacter is caret-escaped so it's read as a literal character,
+      // not a command separator that could chain in an attacker's command.
+      expect(commandLine).not.toContain('& calc.exe');
+      expect(commandLine).toContain('^&');
+    } finally {
+      platformSpy.mockRestore();
+    }
   });
 });
 

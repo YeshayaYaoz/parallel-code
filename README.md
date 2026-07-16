@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/Electron-47848F?logo=electron&logoColor=white" alt="Electron">
   <img src="https://img.shields.io/badge/SolidJS-2C4F7C?logo=solid&logoColor=white" alt="SolidJS">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey" alt="macOS | Linux">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="macOS | Linux | Windows">
   <img src="https://img.shields.io/github/license/johannesjo/parallel-code" alt="License">
 </p>
 
@@ -93,7 +93,7 @@ When you're happy with the result, merge the branch back to main from the sideba
 - **Configurable keyboard shortcuts** with per-agent presets
 - 10 themes — Islands Dark, Minimal, Graphite, Midnight, Classic, Indigo, Ember, Glacier, Zenburnesque, Workbench
 - State persists across restarts
-- macOS and Linux
+- macOS, Linux, and Windows
 
 </details>
 
@@ -114,6 +114,7 @@ When you're happy with the result, merge the branch back to main from the sideba
 1. **Download** the latest release for your platform from the [releases page](https://github.com/johannesjo/parallel-code/releases/latest):
    - **macOS** — `.dmg` (universal)
    - **Linux** — `.AppImage` or `.deb`
+   - **Windows** — `.exe` (NSIS installer) or portable `.exe`
 
 2. **Install at least one AI coding CLI:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Antigravity CLI](https://antigravity.google/), or [Copilot CLI](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli)
 

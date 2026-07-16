@@ -41,6 +41,7 @@ import {
   checkForUpdates,
 } from '../store/store';
 import { CustomAgentEditor } from './CustomAgentEditor';
+import { GitHubConnectSection } from './GitHubConnectSection';
 import { mod } from '../lib/platform';
 import { DEFAULT_DOCKER_IMAGE, PROJECT_DOCKERFILE_RELATIVE_PATH } from '../lib/docker';
 
@@ -463,6 +464,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
               description="Enable antialiasing and geometric text rendering"
               align="flex-start"
             />
+          </SettingsSection>
+
+          <SettingsSection title="GitHub">
+            <GitHubConnectSection />
           </SettingsSection>
 
           <SettingsSection title="New Task Defaults">
