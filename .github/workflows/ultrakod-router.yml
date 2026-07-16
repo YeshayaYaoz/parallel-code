@@ -1,0 +1,71 @@
+name: Ultrakod Model Router
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Routing mode'
+        required: false
+        default: 'balanced'
+        type: choice
+        options:
+          - cheap
+          - balanced
+          - extra
+
+permissions:
+  contents: read
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build ultrakod CLI
+        run: npm run build:ultrakod
+
+      - name: Get routing recommendations
+        id: route
+        run: |
+          MODE="${{ github.event.inputs.mode || 'balanced' }}"
+
+          echo "## Ultrakod Router" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** \`$MODE\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Models" >> $GITHUB_STEP_SUMMARY
+          echo "| Model | Cost/1M tokens | Provider | Strengths |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|----------------|----------|-----------|" >> $GITHUB_STEP_SUMMARY
+
+          node dist-electron/ultrakod/cli.js models 2>&1 | while IFS= read -r line; do
+            echo "$line"
+          done
+
+          for MODEArg in cheap balanced extra; do
+            RESULT=$(node dist-electron/ultrakod/cli.js route --mode "$MODEArg" 2>&1)
+            RECOMMENDED=$(echo "$RESULT" | head -1)
+            JSON=$(echo "$RESULT" | tail -1)
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ "$MODEArg" = "$MODE" ]; then
+              echo "**→ Recommended ($MODEArg):** $RECOMMENDED" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "Suggested ($MODEArg): $RECOMMENDED" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Router ran at $(date -u +%Y-%m-%dT%H:%M:%SZ)*" >> $GITHUB_STEP_SUMMARY
+
+          echo "mode=$MODE" >> $GITHUB_OUTPUT

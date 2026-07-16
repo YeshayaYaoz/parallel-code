@@ -28,3 +28,6 @@ docs/
 
 # Local runtime state from memory/sidecar processes (not source)
 /data/
+
+# Ultrakod local context (machine-specific paths, not for repo)
+.ultrakod/

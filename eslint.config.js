@@ -112,6 +112,14 @@ export default [
     },
   },
 
+  // CLI files: allow console.log for user-facing output
+  {
+    files: ['electron/ultrakod/cli.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
   // Disable rules that conflict with Prettier (must be last)
   eslintConfigPrettier,
 ];
