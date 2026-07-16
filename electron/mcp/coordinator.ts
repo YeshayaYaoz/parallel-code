@@ -1042,6 +1042,16 @@ export class Coordinator {
     const queueLen = task.pendingPrompts?.length ?? 0;
     if (queueLen >= MAX_PENDING_PROMPTS)
       throw new Error(`Prompt queue full (${MAX_PENDING_PROMPTS} pending)`);
+    // Deduplicate: skip if the last queued or last-written prompt is identical
+    const pendingPrompts = task.pendingPrompts;
+    const lastQueued =
+      pendingPrompts && pendingPrompts.length > 0
+        ? pendingPrompts[pendingPrompts.length - 1]
+        : undefined;
+    if (lastQueued === prompt || task.lastPromptEchoText === prompt) {
+      logInfo('coordinator.prompt_queue', 'deduplicated', { taskId, promptLen: prompt.length });
+      return { queued: true };
+    }
     if (task.initialPrompt && !task.assignedPromptDelivered) {
       task.pendingPrompts = [...(task.pendingPrompts ?? []), prompt];
       this.clearInitialPromptTimer(task.id);
@@ -1083,14 +1093,38 @@ export class Coordinator {
       await this.writePromptToTask(task, prompt);
     } catch (err) {
       if (err instanceof PromptWriteError && err.phase === 'enter') {
-        logWarn(
-          'coordinator.prompt_queue',
-          'queued prompt body was written but Enter failed; not retrying body',
-          {
-            taskId: task.id,
-            err: err.message,
-          },
-        );
+        // Body was written but Enter failed - retry sending Enter up to 2 times
+        let enterRetried = false;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await new Promise((r) => setTimeout(r, 100));
+            writeToAgent(task.agentId, '\r');
+            enterRetried = true;
+            logInfo('coordinator.prompt_queue', 'enter_retry_succeeded', {
+              taskId: task.id,
+              attempt: attempt + 1,
+            });
+            break;
+          } catch {
+            logWarn('coordinator.prompt_queue', 'enter_retry_failed', {
+              taskId: task.id,
+              attempt: attempt + 1,
+            });
+          }
+        }
+        if (!enterRetried) {
+          logWarn(
+            'coordinator.prompt_queue',
+            'queued prompt body was written but Enter failed after retries; dropping prompt',
+            {
+              taskId: task.id,
+              err: err.message,
+            },
+          );
+        }
+        if (!task.pendingPrompts?.length) {
+          task.pendingPrompts = undefined;
+        }
       } else {
         task.pendingPrompts ??= [];
         task.pendingPrompts.unshift(prompt);

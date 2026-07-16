@@ -2557,7 +2557,7 @@ describe('Coordinator sendPrompt', () => {
     }
   });
 
-  it('does not retry a queued prompt body when only the Enter write fails', async () => {
+  it('retries Enter up to 2 times when only the Enter write fails, then drops', async () => {
     vi.useFakeTimers();
     try {
       await coordinator.createTask({ name: 'test', prompt: 'do', coordinatorTaskId: 'coord-1' });
@@ -2572,7 +2572,7 @@ describe('Coordinator sendPrompt', () => {
       });
 
       coordinator.setTaskControl('task-1', 'coordinator');
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(500);
 
       const bodyWrites = mockWriteToAgent.mock.calls.filter(([, data]) => data === 'queued');
       expect(bodyWrites).toHaveLength(1);

@@ -77,6 +77,16 @@ const DEFAULT_AGENTS: AgentDef[] = [
     // Antigravity paints a TUI that needs a beat to settle before auto-send.
     prompt_ready_delay_ms: 1_000,
   },
+  {
+    id: 'ultrakod',
+    name: 'Ultrakod',
+    command: 'ultrakod',
+    args: [],
+    resume_args: [],
+    skip_permissions_args: [],
+    description: 'Model router and context management CLI for optimal model selection',
+    prompt_ready_delay_ms: 500,
+  },
 ];
 
 async function isCommandAvailable(command: string): Promise<boolean> {

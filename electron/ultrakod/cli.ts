@@ -64,7 +64,10 @@ function parseArgs(argv: string[]): CLIArgs {
         args.resetAt = value || argv[++i];
         break;
       case 'exclude':
-        args.exclude = (value || argv[++i])?.split(',');
+        args.exclude = (value || argv[++i])
+          ?.split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
         break;
     }
   }
@@ -140,7 +143,14 @@ function handleRoute(args: CLIArgs): void {
     process.exit(1);
   }
 
-  const context = loadContext(args.projectRoot);
+  let context = loadContext(args.projectRoot);
+  if (!context) {
+    context = initializeContext(
+      args.projectRoot,
+      generateProjectId(args.projectRoot),
+      'claude-sonnet-4-20250514',
+    );
+  }
   const excludeList = args.exclude || [];
 
   if (context?.resetAt && !isResetDue(context)) {
