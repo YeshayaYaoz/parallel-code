@@ -623,6 +623,12 @@ export function spawnAgent(win: BrowserWindow, args: SpawnAgentArgs): void {
     rows: args.rows,
     cwd: spawnSpec.cwd,
     env: spawnSpec.env,
+    // Windows only (ignored elsewhere): node-pty's default kill() path forks
+    // a helper process to enumerate the console's process list, which can
+    // crash with "AttachConsole failed" if the target already exited by the
+    // time it runs. The DLL-based ConPTY path node-pty bundles avoids that
+    // helper process entirely.
+    useConptyDll: true,
   });
 
   const session: PtySession = {
