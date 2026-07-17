@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import { PROVIDER_TO_AGENT_ID } from '../ultrakod/registry.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -116,11 +117,20 @@ export async function listAgents(): Promise<AgentDef[]> {
     return cachedAgents;
   }
 
-  cachedAgents = await Promise.all(
+  const resolved = await Promise.all(
     DEFAULT_AGENTS.map(async (agent) => ({
       ...agent,
-      available: await isCommandAvailable(agent.command),
+      // 'ultrakod' is a placeholder def with no real CLI of its own (see
+      // NewTaskDialog.tsx, which resolves it to a real installed CLI at task
+      // creation time) — checking PATH for a literal `ultrakod` binary would
+      // always report unavailable. Patched below based on its actual pool.
+      available: agent.id === 'ultrakod' ? true : await isCommandAvailable(agent.command),
     })),
+  );
+  const cliAgentIds = new Set(Object.values(PROVIDER_TO_AGENT_ID));
+  const anyCliInstalled = resolved.some((a) => cliAgentIds.has(a.id) && a.available);
+  cachedAgents = resolved.map((a) =>
+    a.id === 'ultrakod' ? { ...a, available: anyCliInstalled } : a,
   );
   cacheTime = now;
   return cachedAgents;
