@@ -30,8 +30,11 @@ import {
   setPrefillPrompt,
   setDockerAvailable,
   setDockerImage,
+  setUltrakodMode,
+  resolveUltrakodStartingAgent,
 } from '../store/store';
 import type { GitIsolationMode } from '../store/types';
+import type { RoutingMode } from '../../electron/ultrakod/registry';
 import {
   toBranchName,
   sanitizeBranchPrefix,
@@ -382,6 +385,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
   const [confirmDiscard, setConfirmDiscard] = createSignal(false);
   const [name, setName] = createSignal('');
   const [selectedAgent, setSelectedAgent] = createSignal<AgentDef | null>(null);
+  const [ultrakodRoutingMode, setUltrakodRoutingMode] = createSignal<RoutingMode>('balanced');
   const [selectedProjectId, setSelectedProjectId] = createSignal<string | null>(null);
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
@@ -887,6 +891,11 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
 
   const agentSupportsSkipPermissions = () => {
     const agent = selectedAgent();
+    // The "Ultrakod" placeholder def itself has no skip_permissions_args,
+    // but every CLI in its live-switching pool (claude-code/codex/gemini)
+    // does — check based on what will actually be spawned, not the
+    // placeholder def.
+    if (agent?.id === 'ultrakod') return true;
     return !!agent?.skip_permissions_args?.length;
   };
 
@@ -910,9 +919,18 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
     const manualName = name().trim();
     const n = resolvedName();
 
-    const agent = selectedAgent();
-    if (!agent) {
+    const selected = selectedAgent();
+    if (!selected) {
       setError('Select an agent');
+      return;
+    }
+
+    const isUltrakod = selected.id === 'ultrakod';
+    const agent = isUltrakod ? resolveUltrakodStartingAgent(ultrakodRoutingMode()) : selected;
+    if (!agent) {
+      setError(
+        'No installed CLI is currently available for Ultrakod (claude/codex/gemini all missing or rate-limited).',
+      );
       return;
     }
 
@@ -999,6 +1017,9 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
           ? clampCoordinatorConcurrentTasks(maxConcurrentTasks())
           : undefined,
       });
+      if (isUltrakod) {
+        setUltrakodMode(taskId, ultrakodRoutingMode());
+      }
       // Drop flow: prefill prompt without auto-sending
       if (isFromDrop && p) {
         setPrefillPrompt(taskId, p);
@@ -1183,6 +1204,35 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
             onSelect={setSelectedAgent}
             wrap={false}
           />
+
+          {/* Ultrakod: instead of a fixed CLI, this task auto-picks the best
+              available model/CLI for the chosen mode and auto-swaps on a
+              usage limit — see src/store/ultrakodOrchestrator.ts. */}
+          <Show when={selectedAgent()?.id === 'ultrakod'}>
+            <div
+              data-nav-field="ultrakod-mode"
+              style={{ display: 'flex', 'flex-direction': 'column', gap: '8px' }}
+            >
+              <label style={sectionLabelStyle}>Ultrakod Mode</label>
+              <SegmentedButtons<RoutingMode>
+                options={[
+                  { value: 'cheap', label: 'Cheap', title: 'Always picks the lowest-cost model.' },
+                  {
+                    value: 'balanced',
+                    label: 'Balanced',
+                    title: 'Best value mid-tier model for each provider.',
+                  },
+                  {
+                    value: 'extra',
+                    label: 'Extra',
+                    title: 'Best-value flagship model for each provider.',
+                  },
+                ]}
+                value={ultrakodRoutingMode()}
+                onChange={setUltrakodRoutingMode}
+              />
+            </div>
+          </Show>
 
           {/* Isolation mode selector — hidden for non-git projects */}
           <Show when={!isNonGitProject()}>

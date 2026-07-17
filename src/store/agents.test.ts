@@ -134,4 +134,38 @@ describe('switchAgent', () => {
     expect(mockAgents['agent-1'].spawnDelayMs).toBeUndefined();
     expect(mockMarkAgentSpawned).toHaveBeenCalledWith('agent-1');
   });
+
+  it('swaps a still-running agent to a different CLI (live hot-swap, not just post-exit)', () => {
+    // The UI only exposes switchAgent after an agent has exited, but nothing
+    // in the implementation depends on that — the live ultrakod orchestrator
+    // (src/store/ultrakodOrchestrator.ts) calls this on a still-`running`
+    // agent to swap out a rate-limited CLI for a different one.
+    mockAgents['agent-1'] = {
+      ...mockAgents['agent-1'],
+      status: 'running',
+      exitCode: null,
+      signal: null,
+      generation: 0,
+    };
+    const geminiDef: AgentDefLike = {
+      ...codexDef,
+      id: 'gemini',
+      name: 'Gemini',
+      command: 'gemini',
+    };
+
+    switchAgent('agent-1', geminiDef);
+
+    expect(mockAgents['agent-1']).toMatchObject({
+      def: geminiDef,
+      status: 'running',
+      exitCode: null,
+      signal: null,
+      lastOutput: [],
+      resumed: false,
+      generation: 1,
+      attachExisting: false,
+    });
+    expect(mockMarkAgentSpawned).toHaveBeenCalledWith('agent-1');
+  });
 });

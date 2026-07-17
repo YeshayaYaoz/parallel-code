@@ -13,7 +13,14 @@ module.exports = {
         // Allow importing pure shared modules with no Node/Electron deps:
         //   - electron/ipc/channels.ts — IPC channel enum
         //   - electron/mcp/prompt-detect.ts — regex-only prompt detector reused by the renderer task-status pipeline
-        pathNot: ['^electron/ipc/channels\\.ts', '^electron/mcp/prompt-detect\\.ts'],
+        //   - electron/ultrakod/registry.ts — model registry (types + pure functions), the
+        //     canonical source of truth also synced to ultrakod-listener; reused by the
+        //     renderer's live orchestrator (src/store/ultrakodOrchestrator.ts) to pick models
+        pathNot: [
+          '^electron/ipc/channels\\.ts',
+          '^electron/mcp/prompt-detect\\.ts',
+          '^electron/ultrakod/registry\\.ts',
+        ],
       },
     },
     {

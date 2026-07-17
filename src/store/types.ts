@@ -3,6 +3,7 @@ import type { DockerSource } from '../lib/docker';
 import type { LookPreset, AppearanceMode } from '../lib/look';
 import type { KeyBinding } from '../lib/keybindings';
 import type { CustomTheme } from '../lib/custom-theme';
+import type { RoutingMode } from '../../electron/ultrakod/registry';
 
 /** A user override for a binding: partial key/modifiers to apply, or null to unbind. */
 export type KeybindingOverride = Partial<Pick<KeyBinding, 'key' | 'modifiers'>> | null;
@@ -157,6 +158,11 @@ export interface Task {
   // submitted to the ultrakod Railway service; cleared once the answer is
   // delivered back into the terminal. See src/lib/ultrakod-queue.ts.
   queuedRailwayTaskId?: string;
+  // Live ultrakod orchestrator: when true, src/store/ultrakodOrchestrator.ts
+  // auto-swaps this task's active agent to the next-best CLI/model on a
+  // rate limit, and back once the preferred one recovers.
+  ultrakodMode?: boolean;
+  ultrakodRoutingMode?: RoutingMode;
 }
 
 export interface Terminal {
@@ -214,6 +220,8 @@ export interface PersistedTask {
   landingSummary?: string;
   landedMetadata?: LandedMetadata;
   queuedRailwayTaskId?: string;
+  ultrakodMode?: boolean;
+  ultrakodRoutingMode?: RoutingMode;
 }
 
 export interface PersistedTerminal {

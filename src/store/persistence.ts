@@ -162,6 +162,8 @@ function toPersistedTask(task: Task, agentDefs: AgentDef[], collapsed?: boolean)
     landingSummary: task.landingSummary,
     landedMetadata: task.landedMetadata,
     queuedRailwayTaskId: task.queuedRailwayTaskId,
+    ultrakodMode: task.ultrakodMode,
+    ultrakodRoutingMode: task.ultrakodRoutingMode,
   };
 }
 
@@ -693,6 +695,8 @@ export async function loadState(): Promise<void> {
           landingSummary: pt.landingSummary,
           landedMetadata: pt.landedMetadata,
           queuedRailwayTaskId: pt.queuedRailwayTaskId,
+          ultrakodMode: pt.ultrakodMode,
+          ultrakodRoutingMode: pt.ultrakodRoutingMode,
         };
 
         s.tasks[taskId] = task;
@@ -799,6 +803,8 @@ export async function loadState(): Promise<void> {
           landingSummary: pt.landingSummary,
           landedMetadata: pt.landedMetadata,
           queuedRailwayTaskId: pt.queuedRailwayTaskId,
+          ultrakodMode: pt.ultrakodMode,
+          ultrakodRoutingMode: pt.ultrakodRoutingMode,
         };
 
         s.tasks[taskId] = task;

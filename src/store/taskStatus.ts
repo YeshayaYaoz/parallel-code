@@ -608,6 +608,11 @@ export function markAgentSpawned(agentId: string): void {
   state.lastDataAt = Date.now();
   addToActive(agentId);
   resetIdleTimer(agentId);
+  // A fresh spawn at this agentId may be a different process entirely (e.g.
+  // switchAgent swapping CLIs) — don't let a question/rate-limit flag
+  // detected from the PREVIOUS process linger until new output arrives.
+  updateQuestionState(agentId, false);
+  updateRateLimitState(agentId, false);
 }
 
 /** True when the task owning this agent should always auto-handle trust dialogs,

@@ -42,6 +42,8 @@ import {
   stopTaskStatusPolling,
   startUltrakodQueuePolling,
   stopUltrakodQueuePolling,
+  startUltrakodOrchestrator,
+  stopUltrakodOrchestrator,
   navigateRow,
   navigateColumn,
   navigateTask,
@@ -523,6 +525,7 @@ function App() {
     setupAutosave();
     startTaskStatusPolling();
     startUltrakodQueuePolling();
+    startUltrakodOrchestrator();
     const stopMCPListeners = initMCPListeners();
     const stopNotificationWatcher = startDesktopNotificationWatcher(windowFocused);
     const stopPrChecksSubscription = startPrChecksSubscription();
@@ -721,6 +724,7 @@ function App() {
       cleanupShortcuts();
       stopTaskStatusPolling();
       stopUltrakodQueuePolling();
+      stopUltrakodOrchestrator();
       stopMCPListeners();
       stopNotificationWatcher();
       stopPrChecksSubscription();

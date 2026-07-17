@@ -42,6 +42,7 @@ export {
   clearPrefillPrompt,
   clearTaskLandingReview,
   setPrefillPrompt,
+  setUltrakodMode,
   reorderTask,
   reorderTaskVisually,
   spawnShellForTask,
@@ -171,6 +172,12 @@ export {
 } from './taskStatus';
 export type { TaskAttentionState, TaskDotStatus } from './taskStatus';
 export { startUltrakodQueuePolling, stopUltrakodQueuePolling } from './ultrakodQueuePoller';
+export {
+  startUltrakodOrchestrator,
+  stopUltrakodOrchestrator,
+  resolveUltrakodStartingAgent,
+  getLastUltrakodSwitch,
+} from './ultrakodOrchestrator';
 export { showNotification, clearNotification } from './notification';
 export { startPrChecksSubscription, getPrChecks, type PrChecksState } from './pr-checks';
 export { getMergedTasksTodayCount, getMergedLineTotals } from './completion';

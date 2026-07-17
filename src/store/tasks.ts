@@ -18,6 +18,7 @@ import {
 } from './taskStatus';
 import { recordMergedLines, recordTaskMerged } from './completion';
 import { warn as logWarn } from '../lib/log';
+import type { RoutingMode } from '../../electron/ultrakod/registry';
 import { cleanTaskName } from '../lib/clean-task-name';
 import type {
   AgentDef,
@@ -757,6 +758,14 @@ export function clearPrefillPrompt(taskId: string): void {
 
 export function setPrefillPrompt(taskId: string, text: string): void {
   setStore('tasks', taskId, 'prefillPrompt', text);
+}
+
+/** Marks a task as ultrakod-orchestrator-managed — see
+ *  src/store/ultrakodOrchestrator.ts, which then auto-swaps this task's
+ *  active agent on a usage limit and back once the preferred model recovers. */
+export function setUltrakodMode(taskId: string, mode: RoutingMode): void {
+  setStore('tasks', taskId, 'ultrakodMode', true);
+  setStore('tasks', taskId, 'ultrakodRoutingMode', mode);
 }
 
 export function clearStagedNotification(taskId: string): void {
