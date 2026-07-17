@@ -16,6 +16,7 @@ import {
   addAgentToTask,
   closeAgentInTask,
   showNotification,
+  resolveUltrakodStartingAgent,
 } from '../store/store';
 import { warn as logWarn } from '../lib/log';
 import { InfoBar } from './InfoBar';
@@ -375,9 +376,23 @@ function AddAgentMenu(props: { taskId: string }) {
 
   async function addAgent(agentDef: AgentDef) {
     if (addingAgentId()) return;
+    // 'ultrakod' is a placeholder def with no real CLI of its own — resolve
+    // it to whichever real installed CLI is best right now, same as
+    // NewTaskDialog.tsx does for a brand-new task.
+    const resolved =
+      agentDef.id === 'ultrakod'
+        ? resolveUltrakodStartingAgent(store.tasks[props.taskId]?.ultrakodRoutingMode ?? 'balanced')
+        : agentDef;
+    if (!resolved) {
+      showNotification(
+        'No installed CLI is currently available for Ultrakod (claude/codex/gemini all missing or rate-limited).',
+      );
+      setOpen(false);
+      return;
+    }
     setAddingAgentId(agentDef.id);
     try {
-      const agentId = await addAgentToTask(props.taskId, agentDef);
+      const agentId = await addAgentToTask(props.taskId, resolved);
       if (agentId) {
         setActiveTask(props.taskId);
         setActiveAgent(agentId);

@@ -3,7 +3,13 @@ import { Dialog } from './Dialog';
 import { AgentSelector } from './AgentSelector';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
-import { createImportedTask, getProjectPath, loadAgents, store } from '../store/store';
+import {
+  createImportedTask,
+  getProjectPath,
+  loadAgents,
+  resolveUltrakodStartingAgent,
+  store,
+} from '../store/store';
 import { theme } from '../lib/theme';
 import type { Project } from '../store/types';
 import type { AgentDef, ImportableWorktree } from '../ipc/types';
@@ -108,6 +114,19 @@ export function ImportWorktreesDialog(props: ImportWorktreesDialogProps) {
     const selected = visibleCandidates().filter((candidate) => selectedPaths().has(candidate.path));
     if (selected.length === 0) return;
 
+    // 'ultrakod' is a placeholder def with no real CLI of its own. This
+    // import flow has no live-switching support (createImportedTask doesn't
+    // thread ultrakodMode through), so it's a one-time pick of the best
+    // installed CLI rather than an ongoing Ultrakod-mode task.
+    const resolvedAgent =
+      agent.id === 'ultrakod' ? resolveUltrakodStartingAgent('balanced') : agent;
+    if (!resolvedAgent) {
+      setError(
+        'No installed CLI is currently available for Ultrakod (claude/codex/gemini all missing or rate-limited).',
+      );
+      return;
+    }
+
     setImporting(true);
     setError('');
     try {
@@ -115,7 +134,7 @@ export function ImportWorktreesDialog(props: ImportWorktreesDialogProps) {
         await createImportedTask({
           projectId: project.id,
           worktree: candidate,
-          agentDef: agent,
+          agentDef: resolvedAgent,
         });
       }
       props.onClose();
