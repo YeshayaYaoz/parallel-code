@@ -25,8 +25,8 @@ import {
 } from './taskStatus';
 import { chunkContainsAgentPrompt } from '../../electron/mcp/prompt-detect';
 import {
-  getModelForMode,
-  MODEL_REGISTRY,
+  pickInstalledModelForMode,
+  PROVIDER_TO_AGENT_ID,
   type ModelInfo,
   type Provider,
   type RoutingMode,
@@ -37,24 +37,7 @@ import type { AgentDef } from '../ipc/types';
 const TICK_INTERVAL_MS = 3_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 
-/** Only these providers have a real interactive coding CLI wired up in this
- *  app (electron/ipc/agents.ts) — DeepSeek/Mistral remain API-only. */
-const PROVIDER_TO_AGENT_ID: Partial<Record<Provider, string>> = {
-  anthropic: 'claude-code',
-  openai: 'codex',
-  google: 'gemini',
-};
-
-const NO_CLI_MODEL_IDS: string[] = Object.values(MODEL_REGISTRY)
-  .filter((m) => !PROVIDER_TO_AGENT_ID[m.provider])
-  .map((m) => m.id);
-
-function modelIdsForProviders(providers: Iterable<Provider>): string[] {
-  const set = new Set(providers);
-  return Object.values(MODEL_REGISTRY)
-    .filter((m) => set.has(m.provider))
-    .map((m) => m.id);
-}
+const ALL_CLI_AGENT_IDS = new Set(Object.values(PROVIDER_TO_AGENT_ID) as string[]);
 
 function resolveInstalledAgentDef(model: ModelInfo): AgentDef | null {
   const agentId = PROVIDER_TO_AGENT_ID[model.provider];
@@ -65,37 +48,42 @@ function resolveInstalledAgentDef(model: ModelInfo): AgentDef | null {
 
 /** The model that would be picked with no cooldowns in effect — i.e. the
  *  task's "preferred" model for its mode, used to detect when we're
- *  currently running on a fallback. */
+ *  currently running on a fallback. Not restricted to *installed* CLIs
+ *  (only to CLI-mappable providers) — installation is checked separately
+ *  before actually switching to it. */
 function pickPreferredModel(mode: RoutingMode): ModelInfo | null {
-  return getModelForMode(mode, NO_CLI_MODEL_IDS);
+  return pickInstalledModelForMode(mode, ALL_CLI_AGENT_IDS);
 }
 
-/** The best model/CLI pair currently actually usable: not cooling down, and
- *  its CLI is installed. Excludes `extraExcludedProviders` in addition
- *  (e.g. the provider that was *just* detected as rate-limited this tick). */
-function pickAvailableAgent(
-  mode: RoutingMode,
-  extraExcludedProviders: Iterable<Provider> = [],
-): { model: ModelInfo; agentDef: AgentDef } | null {
+/** Every CLI-mappable provider whose CLI is both installed and not
+ *  currently cooling down, minus `extraExcludedProviders` (e.g. the
+ *  provider that was *just* detected as rate-limited this tick). */
+function usableAgentIds(extraExcludedProviders: Iterable<Provider> = []): Set<string> {
   const excludedProviders = new Set<Provider>([
     ...cooldowns.unavailableProviderIds(),
     ...extraExcludedProviders,
   ]);
-  let excludedModelIds = [...NO_CLI_MODEL_IDS, ...modelIdsForProviders(excludedProviders)];
-
-  // Bounded retry: each pass either finds an installed CLI or discovers one
-  // more provider whose CLI isn't installed and excludes it for the next
-  // pass. At most one pass per real provider (currently 3), so this can
-  // never loop meaningfully longer than the provider count.
-  for (let i = 0; i < Object.keys(PROVIDER_TO_AGENT_ID).length + 1; i++) {
-    const model = getModelForMode(mode, excludedModelIds);
-    if (!model) return null;
-    const agentDef = resolveInstalledAgentDef(model);
-    if (agentDef) return { model, agentDef };
-    excludedProviders.add(model.provider);
-    excludedModelIds = [...NO_CLI_MODEL_IDS, ...modelIdsForProviders(excludedProviders)];
+  const usable = new Set<string>();
+  for (const [provider, agentId] of Object.entries(PROVIDER_TO_AGENT_ID) as Array<
+    [Provider, string]
+  >) {
+    if (excludedProviders.has(provider)) continue;
+    const def = store.availableAgents.find((a) => a.id === agentId);
+    if (def && def.available !== false) usable.add(agentId);
   }
-  return null;
+  return usable;
+}
+
+/** The best model/CLI pair currently actually usable: not cooling down, and
+ *  its CLI is installed. */
+function pickAvailableAgent(
+  mode: RoutingMode,
+  extraExcludedProviders: Iterable<Provider> = [],
+): { model: ModelInfo; agentDef: AgentDef } | null {
+  const model = pickInstalledModelForMode(mode, usableAgentIds(extraExcludedProviders));
+  if (!model) return null;
+  const agentDef = resolveInstalledAgentDef(model);
+  return agentDef ? { model, agentDef } : null;
 }
 
 function providerForAgentDefId(agentDefId: string): Provider | undefined {

@@ -4,6 +4,8 @@ import {
   canUseModel,
   effectiveCostPerMillion,
   MODEL_REGISTRY,
+  pickInstalledModelForMode,
+  PROVIDER_TO_AGENT_ID,
 } from './registry.js';
 
 describe('effectiveCostPerMillion', () => {
@@ -60,6 +62,45 @@ describe('getModelForMode', () => {
   it('returns null for an unknown mode', () => {
     const model = getModelForMode('unknown' as never);
     expect(model).toBeNull();
+  });
+});
+
+describe('pickInstalledModelForMode', () => {
+  const CLI_AGENT_IDS = new Set(['claude-code', 'codex', 'gemini']);
+
+  it('excludes providers with no mapped CLI even when otherwise cheapest', () => {
+    // Plain getModelForMode('cheap') picks mistral-small-3 (see above) — but
+    // Mistral has no PROVIDER_TO_AGENT_ID entry, so it must never be picked here.
+    const model = pickInstalledModelForMode('cheap', CLI_AGENT_IDS);
+    expect(model).not.toBeNull();
+    expect(model?.provider).not.toBe('mistral');
+    expect(model?.provider).not.toBe('deepseek');
+    expect(model && PROVIDER_TO_AGENT_ID[model.provider]).toBeDefined();
+  });
+
+  it('excludes providers whose CLI is not in the installed set', () => {
+    const claudeOnly = new Set(['claude-code']);
+    const model = pickInstalledModelForMode('cheap', claudeOnly);
+    expect(model).not.toBeNull();
+    expect(model?.provider).toBe('anthropic');
+  });
+
+  it('returns null when no CLI-mappable provider is installed', () => {
+    const model = pickInstalledModelForMode('cheap', new Set());
+    expect(model).toBeNull();
+  });
+
+  it('still respects an explicit exclude list on top of the installed filter', () => {
+    const model = pickInstalledModelForMode('cheap', CLI_AGENT_IDS, ['gpt-4o-mini']);
+    expect(model).not.toBeNull();
+    expect(model?.id).not.toBe('gpt-4o-mini');
+  });
+
+  it('still ranks by tier for balanced/extra modes among installed CLIs', () => {
+    const balanced = pickInstalledModelForMode('balanced', CLI_AGENT_IDS);
+    expect(balanced?.tier).toBe('balanced');
+    const extra = pickInstalledModelForMode('extra', CLI_AGENT_IDS);
+    expect(extra?.tier).toBe('flagship');
   });
 });
 

@@ -42,7 +42,6 @@ export {
   clearPrefillPrompt,
   clearTaskLandingReview,
   setPrefillPrompt,
-  setUltrakodMode,
   reorderTask,
   reorderTaskVisually,
   spawnShellForTask,

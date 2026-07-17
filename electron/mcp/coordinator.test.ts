@@ -40,10 +40,91 @@ import {
 
 const { Coordinator } = await setupCoordinatorHarness();
 const { removePreambleBlock } = await import('./preamble.js');
+const { resolveSubTaskAgentCommand } = await import('./coordinator.js');
 const getChangedFiles = mockGetChangedFiles;
 const getAllFileDiffs = mockGetAllFileDiffs;
 const getDiffBaseSha = mockGetDiffBaseSha;
 const mergeTask = mockGitMergeTask;
+
+// ─── resolveSubTaskAgentCommand — sub-task starting CLI selection ────────────
+
+describe('resolveSubTaskAgentCommand', () => {
+  const fakeAgents = [
+    { id: 'claude-code', command: 'claude', args: [], available: true },
+    { id: 'codex', command: 'codex', args: [], available: true },
+    { id: 'gemini', command: 'gemini', args: [], available: true },
+  ];
+
+  function coordinatorState(
+    overrides: Partial<{
+      ultrakodMode: boolean;
+      ultrakodRoutingMode: 'cheap' | 'balanced' | 'extra';
+      propagateSkipPermissions: boolean;
+    }> = {},
+  ) {
+    return {
+      spawnDefaults: { command: 'claude', args: ['--default'] },
+      ultrakodMode: false,
+      ultrakodRoutingMode: undefined,
+      propagateSkipPermissions: false,
+      ...overrides,
+    };
+  }
+
+  it('falls back to spawnDefaults when not in ultrakodMode', async () => {
+    const result = await resolveSubTaskAgentCommand(coordinatorState(), {}, async () => fakeAgents);
+    expect(result).toEqual({ command: 'claude', args: ['--default'] });
+  });
+
+  it('respects an explicit opts override when not in ultrakodMode', async () => {
+    const result = await resolveSubTaskAgentCommand(
+      coordinatorState(),
+      { agentCommand: 'gemini', agentArgs: ['--foo'] },
+      async () => fakeAgents,
+    );
+    expect(result).toEqual({ command: 'gemini', args: ['--foo'] });
+  });
+
+  it('forces Claude when fully autonomous, regardless of routing mode', async () => {
+    const result = await resolveSubTaskAgentCommand(
+      coordinatorState({
+        ultrakodMode: true,
+        ultrakodRoutingMode: 'cheap',
+        propagateSkipPermissions: true,
+      }),
+      {},
+      async () => fakeAgents,
+    );
+    expect(result).toEqual({ command: 'claude', args: [] });
+  });
+
+  it('picks an installed CLI for the routing mode when human-supervised', async () => {
+    const result = await resolveSubTaskAgentCommand(
+      coordinatorState({ ultrakodMode: true, ultrakodRoutingMode: 'cheap' }),
+      {},
+      async () => fakeAgents,
+    );
+    expect(['claude', 'codex', 'gemini']).toContain(result.command);
+  });
+
+  it('excludes CLIs that are not installed from the pick', async () => {
+    const result = await resolveSubTaskAgentCommand(
+      coordinatorState({ ultrakodMode: true, ultrakodRoutingMode: 'cheap' }),
+      {},
+      async () => [{ id: 'claude-code', command: 'claude', args: [], available: true }],
+    );
+    expect(result.command).toBe('claude');
+  });
+
+  it('falls back to spawnDefaults when no CLI-mappable provider is installed', async () => {
+    const result = await resolveSubTaskAgentCommand(
+      coordinatorState({ ultrakodMode: true, ultrakodRoutingMode: 'cheap' }),
+      {},
+      async () => [],
+    );
+    expect(result).toEqual({ command: 'claude', args: ['--default'] });
+  });
+});
 
 // ─── registerCoordinator idempotency and restore path ────────────────────────
 

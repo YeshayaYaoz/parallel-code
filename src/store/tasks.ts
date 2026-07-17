@@ -232,6 +232,8 @@ export interface CreateTaskOptions {
   coordinatorMode?: boolean;
   propagateSkipPermissions?: boolean;
   maxConcurrentTasks?: number;
+  ultrakodMode?: boolean;
+  ultrakodRoutingMode?: RoutingMode;
 }
 
 export async function createTask(opts: CreateTaskOptions): Promise<string> {
@@ -307,6 +309,8 @@ export async function createTask(opts: CreateTaskOptions): Promise<string> {
         worktreePath: gitIsolation === 'worktree' ? worktreePath : undefined,
         skipPermissions: skipPermissions ?? false,
         propagateSkipPermissions: opts.propagateSkipPermissions ?? false,
+        ultrakodMode: opts.ultrakodMode ?? false,
+        ultrakodRoutingMode: opts.ultrakodRoutingMode,
         agentCommand: agentDef.command,
         agentArgs: agentDef.args,
         dockerContainerName,
@@ -385,6 +389,8 @@ export async function createTask(opts: CreateTaskOptions): Promise<string> {
     mcpLaunchArgs,
     // Coordinator tasks call StartMCPServer before entering the store, so MCP is ready immediately.
     mcpStartupStatus: opts.coordinatorMode ? ('ready' as const) : undefined,
+    ultrakodMode: opts.ultrakodMode || undefined,
+    ultrakodRoutingMode: opts.ultrakodMode ? opts.ultrakodRoutingMode : undefined,
   };
 
   const agent = createAgentRecord({
@@ -760,14 +766,6 @@ export function setPrefillPrompt(taskId: string, text: string): void {
   setStore('tasks', taskId, 'prefillPrompt', text);
 }
 
-/** Marks a task as ultrakod-orchestrator-managed — see
- *  src/store/ultrakodOrchestrator.ts, which then auto-swaps this task's
- *  active agent on a usage limit and back once the preferred model recovers. */
-export function setUltrakodMode(taskId: string, mode: RoutingMode): void {
-  setStore('tasks', taskId, 'ultrakodMode', true);
-  setStore('tasks', taskId, 'ultrakodRoutingMode', mode);
-}
-
 export function clearStagedNotification(taskId: string): void {
   setStore('tasks', taskId, 'stagedNotification', undefined);
 }
@@ -1098,6 +1096,8 @@ interface MCPTaskCreatedEvent {
   agentArgs?: string[];
   mcpLaunchArgs?: string[];
   skipPermissions?: boolean;
+  ultrakodMode?: boolean;
+  ultrakodRoutingMode?: RoutingMode;
 }
 
 let activeMCPListenersCleanup: (() => void) | undefined;
@@ -1133,6 +1133,8 @@ export function initMCPListeners(): () => void {
         // Backend-spawned children are already attached to a live MCP server;
         // restore-created MCP tasks start pending until hydration marks them ready.
         mcpStartupStatus: 'ready' as const,
+        ultrakodMode: evt.ultrakodMode || undefined,
+        ultrakodRoutingMode: evt.ultrakodMode ? evt.ultrakodRoutingMode : undefined,
       };
 
       const cmd = evt.agentCommand ?? 'claude';
@@ -1444,6 +1446,8 @@ export function retryTaskMcpStartup(taskId: string): Promise<void> {
       worktreePath: task.gitIsolation === 'worktree' ? task.worktreePath : undefined,
       skipPermissions: task.skipPermissions ?? false,
       propagateSkipPermissions: task.propagateSkipPermissions ?? false,
+      ultrakodMode: task.ultrakodMode ?? false,
+      ultrakodRoutingMode: task.ultrakodRoutingMode,
       agentCommand: agentDef?.command ?? 'claude',
       agentArgs: agentDef?.args ?? [],
       dockerContainerName,

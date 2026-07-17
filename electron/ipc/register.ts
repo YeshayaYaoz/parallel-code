@@ -117,6 +117,7 @@ import {
   assertOptionalBoolean,
 } from './validate.js';
 import { validateBranchName as sharedValidateBranchName, validateUUID } from '../mcp/validation.js';
+import type { RoutingMode } from '../ultrakod/registry.js';
 import { debug as logDebug, warn as logWarn, errMessage } from '../log.js';
 import { getMCPRemoteServerUrl, detectStaleDockerMCPUrl } from '../mcp/config.js';
 import { redactServerUrl } from '../remote/server.js';
@@ -215,6 +216,15 @@ export function validateStartMCPServerArgs(args: Record<string, unknown>): void 
   if (args.agentArgs !== undefined) assertStringArray(args.agentArgs, 'agentArgs');
   assertOptionalBoolean(args.skipPermissions, 'skipPermissions');
   assertOptionalBoolean(args.propagateSkipPermissions, 'propagateSkipPermissions');
+  assertOptionalBoolean(args.ultrakodMode, 'ultrakodMode');
+  if (
+    args.ultrakodRoutingMode !== undefined &&
+    args.ultrakodRoutingMode !== 'cheap' &&
+    args.ultrakodRoutingMode !== 'balanced' &&
+    args.ultrakodRoutingMode !== 'extra'
+  ) {
+    throw new Error('ultrakodRoutingMode must be cheap, balanced, or extra');
+  }
   if (args.dockerContainerName !== undefined) {
     assertString(args.dockerContainerName, 'dockerContainerName');
     if (!/^[a-zA-Z0-9_.-]+$/.test(args.dockerContainerName as string)) {
@@ -1578,6 +1588,8 @@ export function registerAllHandlers(win: BrowserWindow): void {
         worktreePath?: string;
         skipPermissions?: boolean;
         propagateSkipPermissions?: boolean;
+        ultrakodMode?: boolean;
+        ultrakodRoutingMode?: RoutingMode;
         agentCommand?: string;
         agentArgs?: string[];
         dockerContainerName?: string;
@@ -1622,6 +1634,8 @@ export function registerAllHandlers(win: BrowserWindow): void {
         branchName: args.coordinatorBranch,
         worktreePath: args.worktreePath,
         skipPermissions: Boolean(args.skipPermissions && args.propagateSkipPermissions),
+        ultrakodMode: args.ultrakodMode,
+        ultrakodRoutingMode: args.ultrakodRoutingMode,
       });
 
       // Start remote server if not running

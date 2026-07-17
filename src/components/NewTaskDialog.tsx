@@ -30,7 +30,6 @@ import {
   setPrefillPrompt,
   setDockerAvailable,
   setDockerImage,
-  setUltrakodMode,
   resolveUltrakodStartingAgent,
 } from '../store/store';
 import type { GitIsolationMode } from '../store/types';
@@ -1016,10 +1015,9 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
         maxConcurrentTasks: coordinatorMode()
           ? clampCoordinatorConcurrentTasks(maxConcurrentTasks())
           : undefined,
+        ultrakodMode: isUltrakod || undefined,
+        ultrakodRoutingMode: isUltrakod ? ultrakodRoutingMode() : undefined,
       });
-      if (isUltrakod) {
-        setUltrakodMode(taskId, ultrakodRoutingMode());
-      }
       // Drop flow: prefill prompt without auto-sending
       if (isFromDrop && p) {
         setPrefillPrompt(taskId, p);

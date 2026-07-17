@@ -32,7 +32,12 @@ import { truncateDiffForTool } from './diff-format.js';
 const execAsync = promisify(execFile);
 import type { BrowserWindow } from 'electron';
 import { createTask as createBackendTask, deleteTask } from '../ipc/tasks.js';
-import { getSkipPermissionsArgs } from '../ipc/agents.js';
+import { getSkipPermissionsArgs, listAgents } from '../ipc/agents.js';
+import {
+  pickInstalledModelForMode,
+  PROVIDER_TO_AGENT_ID,
+  type RoutingMode,
+} from '../ultrakod/registry.js';
 import {
   spawnAgent,
   writeToAgent,
@@ -137,6 +142,56 @@ function parsePorcelainPaths(statusOut: string): string[] {
 function execStdout(result: Awaited<ReturnType<typeof execAsync>>): string {
   const stdout = typeof result === 'string' ? result : result.stdout;
   return typeof stdout === 'string' ? stdout : stdout.toString('utf8');
+}
+
+/**
+ * Picks the command/args for a new sub-task, given the coordinator's ultrakod
+ * settings (if any). Extracted as a standalone function (rather than inlined
+ * in Coordinator.createTask()) so it's directly unit-testable without
+ * exercising PTY spawning or MCP HTTP routes.
+ *
+ * - Not in ultrakodMode: the existing behavior — explicit opts override,
+ *   else the coordinator's spawnDefaults.
+ * - Fully autonomous (propagateSkipPermissions true — skip-permissions +
+ *   self-land, no human review): forced to Claude regardless of routing
+ *   mode. Same reasoning as runCodingTask() in
+ *   ultrakod-listener/src/router.ts — only Claude has a verified-safe
+ *   unattended, auto-approving execution path here; guessing at another
+ *   CLI's non-interactive flags is exactly the kind of mistake that could
+ *   silently misbehave with real, unreviewed repo write access.
+ * - Otherwise (human-supervised sub-task): picks the best installed CLI for
+ *   the coordinator's routing mode, falling back to spawnDefaults if none
+ *   is installed.
+ */
+export async function resolveSubTaskAgentCommand(
+  coordinatorState: Pick<
+    CoordinatorState,
+    'spawnDefaults' | 'ultrakodMode' | 'ultrakodRoutingMode' | 'propagateSkipPermissions'
+  >,
+  opts: { agentCommand?: string; agentArgs?: string[] },
+  listInstalledAgents: () => Promise<
+    Array<{ id: string; command: string; args: string[]; available?: boolean }>
+  >,
+): Promise<{ command: string; args: string[] }> {
+  const fallback = {
+    command: opts.agentCommand ?? coordinatorState.spawnDefaults.command,
+    args: opts.agentArgs ?? coordinatorState.spawnDefaults.args,
+  };
+  if (!coordinatorState.ultrakodMode) return fallback;
+
+  if (coordinatorState.propagateSkipPermissions) {
+    return { command: 'claude', args: [] };
+  }
+
+  const agents = await listInstalledAgents();
+  const installed = new Set(agents.filter((a) => a.available !== false).map((a) => a.id));
+  const model = pickInstalledModelForMode(
+    coordinatorState.ultrakodRoutingMode ?? 'balanced',
+    installed,
+  );
+  const resolvedId = model && PROVIDER_TO_AGENT_ID[model.provider];
+  const resolved = resolvedId ? agents.find((a) => a.id === resolvedId) : undefined;
+  return resolved ? { command: resolved.command, args: resolved.args } : fallback;
 }
 
 export class Coordinator {
@@ -866,7 +921,12 @@ export class Coordinator {
     // Spawn the agent process
     if (!this.win) throw new Error('No window set on coordinator');
 
-    const agentCommand = opts.agentCommand ?? coordinatorState.spawnDefaults.command;
+    const resolvedAgent = await resolveSubTaskAgentCommand(
+      coordinatorState,
+      { agentCommand: opts.agentCommand, agentArgs: opts.agentArgs },
+      listAgents,
+    );
+    const agentCommand = resolvedAgent.command;
     const dockerContainerName =
       this.coordinators.get(task.coordinatorTaskId)?.dockerContainerName ?? null;
 
@@ -904,7 +964,7 @@ export class Coordinator {
         task.mcpConfigPath = configPath;
       }
 
-      const agentArgs = opts.agentArgs ?? coordinatorState.spawnDefaults.args;
+      const agentArgs = resolvedAgent.args;
       const baseArgs = [
         ...agentArgs,
         ...(coordinatorState.propagateSkipPermissions ? getSkipPermissionsArgs(agentCommand) : []),
@@ -971,6 +1031,8 @@ export class Coordinator {
         agentArgs: notifyAgentArgs,
         mcpLaunchArgs: mcpArgs,
         skipPermissions: coordinatorState.propagateSkipPermissions,
+        ultrakodMode: coordinatorState.ultrakodMode,
+        ultrakodRoutingMode: coordinatorState.ultrakodRoutingMode,
       });
 
       return task;
@@ -2056,7 +2118,13 @@ export class Coordinator {
   registerCoordinator(
     coordinatorTaskId: string,
     projectId: string,
-    opts?: { branchName?: string; worktreePath?: string; skipPermissions?: boolean },
+    opts?: {
+      branchName?: string;
+      worktreePath?: string;
+      skipPermissions?: boolean;
+      ultrakodMode?: boolean;
+      ultrakodRoutingMode?: RoutingMode;
+    },
   ): void {
     const existing = this.coordinators.get(coordinatorTaskId);
     if (existing) {
@@ -2080,6 +2148,8 @@ export class Coordinator {
       ackedBatchIds: [],
       restageTimer: null,
       propagateSkipPermissions: Boolean(opts?.skipPermissions),
+      ultrakodMode: opts?.ultrakodMode,
+      ultrakodRoutingMode: opts?.ultrakodRoutingMode,
       mcpJsonPath: '',
       createdMcpJson: false,
     });

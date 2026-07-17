@@ -1,5 +1,7 @@
 // Shared types for the MCP coordinating-agent system.
 
+import type { RoutingMode } from '../ultrakod/registry.js';
+
 export interface CoordinatedTask {
   id: string;
   name: string;
@@ -86,6 +88,13 @@ export interface CoordinatorState {
   restageTimer: ReturnType<typeof setTimeout> | null;
   /** Whether to pass skipPermissions to sub-tasks created by this coordinator. */
   propagateSkipPermissions: boolean;
+  /** When true, sub-tasks this coordinator creates pick their starting CLI
+   *  via the live ultrakod orchestrator instead of spawnDefaults — see
+   *  Coordinator.createTask(). Forced to Claude-only regardless of mode
+   *  when propagateSkipPermissions is also true (fully autonomous
+   *  self-landing sub-tasks stay on the one verified-safe unattended CLI). */
+  ultrakodMode?: boolean;
+  ultrakodRoutingMode?: RoutingMode;
   /** Path to the .mcp.json file written for this coordinator. */
   mcpJsonPath: string;
   /** True if Parallel Code created .mcp.json from scratch; false if it was pre-existing. */

@@ -372,6 +372,40 @@ export function getModelForMode(mode: RoutingMode, excludeModels: string[] = [])
   }
 }
 
+/** Only these providers have a real interactive coding CLI wired up in
+ *  Parallel Code (electron/ipc/agents.ts) — DeepSeek/Mistral remain API-only
+ *  (used by ultrakod-listener's Q&A queue, not by any live terminal agent).
+ *  Shared across the renderer's live orchestrator
+ *  (src/store/ultrakodOrchestrator.ts) and the main-process coordinator
+ *  (electron/mcp/coordinator.ts) so both pick CLIs the exact same way. */
+export const PROVIDER_TO_AGENT_ID: Partial<Record<Provider, string>> = {
+  anthropic: 'claude-code',
+  openai: 'codex',
+  google: 'gemini',
+};
+
+/**
+ * Pure model-for-mode picker restricted to providers with an installed,
+ * real interactive CLI. Takes the caller's own "is this CLI installed" set
+ * rather than checking anything itself, so it works identically whether
+ * the caller is the renderer (installed set from store.availableAgents) or
+ * the main process (installed set from electron/ipc/agents.ts's
+ * listAgents()) — no I/O, no process-specific assumptions.
+ */
+export function pickInstalledModelForMode(
+  mode: RoutingMode,
+  installedAgentIds: ReadonlySet<string>,
+  excludeModels: string[] = [],
+): ModelInfo | null {
+  const notInstalled = Object.values(MODEL_REGISTRY)
+    .filter((m) => {
+      const agentId = PROVIDER_TO_AGENT_ID[m.provider];
+      return !agentId || !installedAgentIds.has(agentId);
+    })
+    .map((m) => m.id);
+  return getModelForMode(mode, [...excludeModels, ...notInstalled]);
+}
+
 export function canUseModel(modelId: string, context: { resetAt?: string }): boolean {
   const model = MODEL_REGISTRY[modelId];
   if (!model) {
