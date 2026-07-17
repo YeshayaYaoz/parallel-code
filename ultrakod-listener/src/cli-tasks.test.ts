@@ -65,6 +65,22 @@ describe('listPendingCliTasks', () => {
   });
 });
 
+describe('deleteCliTask', () => {
+  it('removes a pending task and reports success', () => {
+    mod.submitCliTask(submission());
+    expect(mod.deleteCliTask('task-1')).toBe(true);
+    expect(mod.getCliTask('task-1')).toBeNull();
+  });
+
+  it('returns false for an unknown id', () => {
+    expect(mod.deleteCliTask('does-not-exist')).toBe(false);
+  });
+
+  it('rejects a taskId with path-traversal characters', () => {
+    expect(mod.deleteCliTask('../../etc/passwd')).toBe(false);
+  });
+});
+
 describe('markCliTaskAnswered / markCliTaskFailedAttempt', () => {
   it('marks a task answered with its model and text', () => {
     mod.submitCliTask(submission());
@@ -208,5 +224,44 @@ describe('handleCliTasksRequest', () => {
       res,
     );
     expect(res.statusCode).toBe(404);
+  });
+
+  it('deletes a queued task on DELETE', async () => {
+    mod.submitCliTask(submission());
+    const res = fakeResponse();
+    await mod.handleCliTasksRequest(
+      fakeRequest({
+        method: 'DELETE',
+        url: '/cli-tasks/task-1',
+        headers: { authorization: 'Bearer test-token' },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mod.getCliTask('task-1')).toBeNull();
+  });
+
+  it('404s deleting an unknown task id', async () => {
+    const res = fakeResponse();
+    await mod.handleCliTasksRequest(
+      fakeRequest({
+        method: 'DELETE',
+        url: '/cli-tasks/nope',
+        headers: { authorization: 'Bearer test-token' },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects an unauthorized DELETE', async () => {
+    mod.submitCliTask(submission());
+    const res = fakeResponse();
+    await mod.handleCliTasksRequest(
+      fakeRequest({ method: 'DELETE', url: '/cli-tasks/task-1' }),
+      res,
+    );
+    expect(res.statusCode).toBe(401);
+    expect(mod.getCliTask('task-1')).not.toBeNull();
   });
 });

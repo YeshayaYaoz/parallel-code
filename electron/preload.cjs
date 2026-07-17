@@ -154,6 +154,7 @@ const ALLOWED_CHANNELS = new Set([
   'ultrakod_queue_clear_config',
   'ultrakod_queue_submit_task',
   'ultrakod_queue_poll_task',
+  'ultrakod_queue_cancel_task',
 ]);
 
 function isAllowedChannel(channel) {

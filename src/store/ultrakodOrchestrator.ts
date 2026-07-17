@@ -26,6 +26,8 @@ import {
 import { chunkContainsAgentPrompt } from '../../electron/mcp/prompt-detect';
 import {
   pickInstalledModelForMode,
+  getModelForMode,
+  MODEL_REGISTRY,
   PROVIDER_TO_AGENT_ID,
   type ModelInfo,
   type Provider,
@@ -86,6 +88,37 @@ function pickAvailableAgent(
   return agentDef ? { model, agentDef } : null;
 }
 
+export interface NextBestModelPick {
+  model: ModelInfo;
+  /** Null when no CLI is installed for this model's provider (either the
+   *  provider has no CLI at all — DeepSeek/Mistral — or its CLI just isn't
+   *  installed locally). The only way to actually use it is the Railway API
+   *  queue (see RateLimitQueueBanner.tsx), not a live terminal switch. */
+  installedAgentDef: AgentDef | null;
+}
+
+/** Best model for `mode` across *every* provider in the registry — unlike
+ *  pickAvailableAgent() above, not restricted to installed CLIs, since
+ *  DeepSeek/Mistral (and any CLI-mappable provider that isn't installed)
+ *  are still real options via the Railway API queue. Used by the banner's
+ *  manual "switch" action, which falls back to queuing when there's no
+ *  installed CLI for the pick. */
+export function pickNextBestModel(
+  mode: RoutingMode,
+  excludeProvider?: Provider,
+): NextBestModelPick | null {
+  const excludedProviders = new Set<Provider>([
+    ...cooldowns.unavailableProviderIds(),
+    ...(excludeProvider ? [excludeProvider] : []),
+  ]);
+  const excludeModelIds = Object.values(MODEL_REGISTRY)
+    .filter((m) => excludedProviders.has(m.provider))
+    .map((m) => m.id);
+  const model = getModelForMode(mode, excludeModelIds);
+  if (!model) return null;
+  return { model, installedAgentDef: resolveInstalledAgentDef(model) };
+}
+
 function providerForAgentDefId(agentDefId: string): Provider | undefined {
   return (Object.entries(PROVIDER_TO_AGENT_ID) as Array<[Provider, string]>).find(
     ([, id]) => id === agentDefId,
@@ -135,6 +168,36 @@ function performSwitch(taskId: string, agentId: string, agentDef: AgentDef, reas
     ...prev,
     [taskId]: { message: `Switched to ${agentDef.name} — ${reason}`, at: Date.now() },
   }));
+}
+
+/** Manual, banner-triggered analogue of the tick loop's rate-limit switch —
+ *  usable for any task regardless of task.ultrakodMode, since it's an
+ *  explicit user action rather than the automatic tick. If the next-best
+ *  model (considering every provider, not just installed CLIs) has a CLI
+ *  installed, switches to it immediately; otherwise returns the pick with
+ *  installedAgentDef: null so the caller can fall back to the Railway API
+ *  queue instead. */
+export function switchAgentToNextBestModel(
+  taskId: string,
+  agentId: string,
+): NextBestModelPick | null {
+  const task = store.tasks[taskId];
+  const agent = store.agents[agentId];
+  if (!task || !agent) return null;
+  const mode: RoutingMode = task.ultrakodRoutingMode ?? 'balanced';
+  const currentProvider = providerForAgentDefId(agent.def.id);
+  if (currentProvider) cooldowns.markCoolingDown(currentProvider);
+  const pick = pickNextBestModel(mode, currentProvider);
+  if (!pick) return null;
+  if (pick.installedAgentDef && pick.installedAgentDef.id !== agent.def.id) {
+    performSwitch(
+      taskId,
+      agentId,
+      pick.installedAgentDef,
+      `manually switched from ${agent.def.name}`,
+    );
+  }
+  return pick;
 }
 
 function tick(): void {

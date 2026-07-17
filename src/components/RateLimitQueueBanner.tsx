@@ -9,6 +9,7 @@ import { theme } from '../lib/theme';
 import { store, setStore } from '../store/core';
 import { isAgentRateLimited, getAgentOutputTail } from '../store/taskStatus';
 import { submitCliQueueTask } from '../lib/ultrakod-queue';
+import { switchAgentToNextBestModel, cancelQueuedTask } from '../store/store';
 import { errMessage } from '../lib/log';
 
 interface RateLimitQueueBannerProps {
@@ -18,13 +19,16 @@ interface RateLimitQueueBannerProps {
 
 export function RateLimitQueueBanner(props: RateLimitQueueBannerProps) {
   const [submitting, setSubmitting] = createSignal(false);
+  const [switching, setSwitching] = createSignal(false);
   const [error, setError] = createSignal<string | undefined>();
+  const [note, setNote] = createSignal<string | undefined>();
 
   const task = () => store.tasks[props.taskId];
   const queuedId = () => task()?.queuedRailwayTaskId;
-  const showOffer = () => isAgentRateLimited(props.agentId) && !queuedId() && !submitting();
+  const showOffer = () =>
+    isAgentRateLimited(props.agentId) && !queuedId() && !submitting() && !switching();
 
-  async function handleQueue(): Promise<void> {
+  async function handleQueue(mode: 'cheap' | 'balanced' | 'extra' = 'balanced'): Promise<void> {
     const currentTask = task();
     if (!currentTask) return;
     setSubmitting(true);
@@ -33,7 +37,7 @@ export function RateLimitQueueBanner(props: RateLimitQueueBannerProps) {
       const railwayTaskId = crypto.randomUUID();
       await submitCliQueueTask({
         taskId: railwayTaskId,
-        mode: 'balanced',
+        mode,
         prompt: currentTask.lastPrompt || 'Continue where we left off.',
         context: { transcriptExcerpt: getAgentOutputTail(props.agentId).slice(-4000) },
       });
@@ -46,8 +50,42 @@ export function RateLimitQueueBanner(props: RateLimitQueueBannerProps) {
     setSubmitting(false);
   }
 
+  async function handleSwitch(): Promise<void> {
+    setSwitching(true);
+    setError(undefined);
+    setNote(undefined);
+    try {
+      const pick = switchAgentToNextBestModel(props.taskId, props.agentId);
+      if (!pick) {
+        setError('No alternative model available right now.');
+        return;
+      }
+      if (!pick.installedAgentDef) {
+        setNote(`No CLI installed for ${pick.model.name} — queuing via API instead.`);
+        await handleQueue(task()?.ultrakodRoutingMode ?? 'balanced');
+      }
+    } finally {
+      setSwitching(false);
+    }
+  }
+
+  async function handleCancel(): Promise<void> {
+    await cancelQueuedTask(props.taskId);
+  }
+
+  const secondaryButtonStyle = {
+    padding: '4px 10px',
+    background: 'transparent',
+    border: `1px solid ${theme.border}`,
+    'border-radius': '6px',
+    color: theme.fg,
+    cursor: 'pointer',
+    'font-size': '12px',
+    'white-space': 'nowrap',
+  } as const;
+
   return (
-    <Show when={showOffer() || queuedId() || error()}>
+    <Show when={showOffer() || queuedId() || error() || switching()}>
       <div
         style={{
           position: 'absolute',
@@ -68,14 +106,26 @@ export function RateLimitQueueBanner(props: RateLimitQueueBannerProps) {
       >
         <Show when={queuedId()}>
           <span style={{ flex: '1' }}>
-            ⏳ Queued — will resend into this terminal once a model is available.
+            {note() ?? '⏳ Queued — will resend into this terminal once a model is available.'}
           </span>
+          <button type="button" onClick={() => void handleCancel()} style={secondaryButtonStyle}>
+            Cancel
+          </button>
+        </Show>
+        <Show when={!queuedId() && switching()}>
+          <span style={{ flex: '1' }}>Switching…</span>
         </Show>
         <Show when={!queuedId() && showOffer()}>
           <span style={{ flex: '1' }}>Usage limit detected on this terminal.</span>
+          <button type="button" onClick={() => void handleSwitch()} style={secondaryButtonStyle}>
+            Switch to next best model
+          </button>
           <button
             type="button"
-            onClick={() => void handleQueue()}
+            onClick={() => {
+              setNote(undefined);
+              void handleQueue();
+            }}
             style={{
               padding: '4px 10px',
               background: theme.accent,

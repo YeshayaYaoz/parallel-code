@@ -13,7 +13,15 @@
 // README.md.
 
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import { timingSafeEqual } from 'crypto';
 import path from 'path';
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -99,6 +107,19 @@ export function getCliTask(id: string): CliTaskRecord | null {
   } catch {
     return null;
   }
+}
+
+/** Cancels a queued task (pending or otherwise) — lets the app-side user
+ *  pull a request back before a model answers it, e.g. because they no
+ *  longer need the continuation or picked a different route instead.
+ *  Returns false for an unknown id so the caller can 404 rather than
+ *  silently no-op. */
+export function deleteCliTask(id: string): boolean {
+  if (!isValidTaskId(id)) return false;
+  const file = taskPath(id);
+  if (!existsSync(file)) return false;
+  unlinkSync(file);
+  return true;
 }
 
 /** Every task currently awaiting a model, oldest first — the CLI-queue
@@ -244,6 +265,13 @@ export async function handleCliTasksRequest(
       model: record.model,
       error: record.status === 'failed' ? record.error : undefined,
     });
+    return true;
+  }
+
+  const deleteMatch = /^\/cli-tasks\/([^/]+)$/.exec(url);
+  if (req.method === 'DELETE' && deleteMatch) {
+    const deleted = deleteCliTask(deleteMatch[1]);
+    sendJson(res, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'not found' });
     return true;
   }
 

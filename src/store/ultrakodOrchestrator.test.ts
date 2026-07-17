@@ -100,8 +100,12 @@ const promptDetectMocks = vi.hoisted(() => ({
 }));
 vi.mock('../../electron/mcp/prompt-detect', () => promptDetectMocks);
 
-const { startUltrakodOrchestrator, stopUltrakodOrchestrator } =
-  await import('./ultrakodOrchestrator');
+const {
+  startUltrakodOrchestrator,
+  stopUltrakodOrchestrator,
+  pickNextBestModel,
+  switchAgentToNextBestModel,
+} = await import('./ultrakodOrchestrator');
 
 const PROVIDER_TO_AGENT_ID: Record<Provider, string | undefined> = {
   anthropic: 'claude-code',
@@ -112,6 +116,7 @@ const PROVIDER_TO_AGENT_ID: Record<Provider, string | undefined> = {
 };
 const NO_CLI_EXCLUDE = ['deepseek-v4-flash', 'mistral-small-3', 'mistral-large-2'];
 const CLI_AGENT_IDS = ['claude-code', 'codex', 'gemini'];
+const FUTURE = new Date(Date.now() + 60_000).toISOString();
 
 /** The agent id the orchestrator would consider "preferred" for a mode with
  *  nothing cooling down — computed from the real registry so this test
@@ -293,5 +298,80 @@ describe('ultrakodOrchestrator', () => {
     vi.advanceTimersByTime(3_000);
 
     expect(switchAgentMock).not.toHaveBeenCalled();
+  });
+
+  describe('pickNextBestModel', () => {
+    it('considers every provider in the registry, not just installed CLIs', () => {
+      // Every CLI-mappable provider cooling down — only DeepSeek/Mistral
+      // (API-only, no CLI in this app) remain as candidates.
+      markCoolingDown('anthropic', FUTURE);
+      markCoolingDown('openai', FUTURE);
+      markCoolingDown('google', FUTURE);
+
+      const pick = pickNextBestModel('cheap');
+
+      expect(pick).not.toBeNull();
+      expect(pick?.installedAgentDef).toBeNull();
+      expect(['deepseek', 'mistral']).toContain(pick?.model.provider);
+    });
+
+    it('excludes the given provider explicitly', () => {
+      const pick = pickNextBestModel('cheap', 'anthropic');
+      expect(pick?.model.provider).not.toBe('anthropic');
+    });
+
+    it('returns null when nothing is left after exclusions', () => {
+      for (const p of ['openai', 'google', 'deepseek', 'mistral'] as const) {
+        markCoolingDown(p, FUTURE);
+      }
+      expect(pickNextBestModel('cheap', 'anthropic')).toBeNull();
+    });
+  });
+
+  describe('switchAgentToNextBestModel', () => {
+    it('switches live to the next-best installed CLI, even outside ultrakodMode', () => {
+      setup({ ultrakodMode: false, ultrakodRoutingMode: 'balanced' }, agentDef('claude-code'));
+
+      const pick = switchAgentToNextBestModel('task-1', 'agent-1');
+
+      expect(pick).not.toBeNull();
+      expect(pick?.installedAgentDef).not.toBeNull();
+      expect(switchAgentMock).toHaveBeenCalledTimes(1);
+      const [agentId, newDef] = switchAgentMock.mock.calls[0] as [string, AgentDefLike];
+      expect(agentId).toBe('agent-1');
+      expect(newDef.id).toBe(pick?.installedAgentDef?.id);
+      expect(newDef.id).not.toBe('claude-code');
+    });
+
+    it('does not call switchAgent when the next-best model has no installed CLI', () => {
+      setup({ ultrakodMode: false }, agentDef('claude-code'));
+      markCoolingDown('openai', FUTURE);
+      markCoolingDown('google', FUTURE);
+
+      const pick = switchAgentToNextBestModel('task-1', 'agent-1');
+
+      expect(pick).not.toBeNull();
+      expect(pick?.installedAgentDef).toBeNull();
+      expect(switchAgentMock).not.toHaveBeenCalled();
+    });
+
+    it('returns null and switches nothing when every provider is cooling down or excluded', () => {
+      setup({ ultrakodMode: false }, agentDef('claude-code'));
+      for (const p of ['openai', 'google', 'deepseek', 'mistral'] as const) {
+        markCoolingDown(p, FUTURE);
+      }
+
+      const pick = switchAgentToNextBestModel('task-1', 'agent-1');
+
+      expect(pick).toBeNull();
+      expect(switchAgentMock).not.toHaveBeenCalled();
+    });
+
+    it('returns null for an unknown task or agent', () => {
+      setup({ ultrakodMode: false }, agentDef('claude-code'));
+      expect(switchAgentToNextBestModel('no-such-task', 'agent-1')).toBeNull();
+      expect(switchAgentToNextBestModel('task-1', 'no-such-agent')).toBeNull();
+      expect(switchAgentMock).not.toHaveBeenCalled();
+    });
   });
 });

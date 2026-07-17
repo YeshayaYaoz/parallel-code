@@ -6,7 +6,7 @@
 import { store, setStore } from './core';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
-import { pollCliQueueTask } from '../lib/ultrakod-queue';
+import { pollCliQueueTask, cancelCliQueueTask } from '../lib/ultrakod-queue';
 import { getAgentOutputTail, isAgentAskingQuestion, stripAnsi } from './taskStatus';
 import { chunkContainsAgentPrompt } from '../../electron/mcp/prompt-detect';
 
@@ -36,6 +36,20 @@ function targetAgentId(taskId: string): string | undefined {
 function clearQueueState(taskId: string): void {
   pendingDelivery.delete(taskId);
   setStore('tasks', taskId, 'queuedRailwayTaskId', undefined);
+}
+
+/** Lets the user pull a request back before it's been answered — e.g. they
+ *  switched to a live CLI instead via RateLimitQueueBanner.tsx. Clears local
+ *  state immediately (optimistic) and best-effort tells Railway to drop the
+ *  record too; a failure to reach Railway doesn't block the local cancel,
+ *  since the poller would just find it gone or answered on its next tick
+ *  either way. */
+export async function cancelQueuedTask(taskId: string): Promise<void> {
+  const queuedId = store.tasks[taskId]?.queuedRailwayTaskId;
+  clearQueueState(taskId);
+  if (queuedId) {
+    await cancelCliQueueTask(queuedId).catch(() => {});
+  }
 }
 
 async function deliver(taskId: string, agentId: string, answer: string): Promise<void> {

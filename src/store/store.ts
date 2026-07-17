@@ -170,12 +170,17 @@ export {
   rescheduleTaskStatusPolling,
 } from './taskStatus';
 export type { TaskAttentionState, TaskDotStatus } from './taskStatus';
-export { startUltrakodQueuePolling, stopUltrakodQueuePolling } from './ultrakodQueuePoller';
+export {
+  startUltrakodQueuePolling,
+  stopUltrakodQueuePolling,
+  cancelQueuedTask,
+} from './ultrakodQueuePoller';
 export {
   startUltrakodOrchestrator,
   stopUltrakodOrchestrator,
   resolveUltrakodStartingAgent,
   getLastUltrakodSwitch,
+  switchAgentToNextBestModel,
 } from './ultrakodOrchestrator';
 export { showNotification, clearNotification } from './notification';
 export { startPrChecksSubscription, getPrChecks, type PrChecksState } from './pr-checks';

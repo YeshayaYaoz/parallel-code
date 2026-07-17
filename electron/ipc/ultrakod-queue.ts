@@ -147,3 +147,18 @@ export async function pollCliQueueTask(taskId: string): Promise<CliQueueTaskStat
   }
   return (await res.json()) as CliQueueTaskStatus;
 }
+
+/** Cancels a queued task before a model has answered it — e.g. the user
+ *  switched to a live CLI instead, or no longer needs the continuation.
+ *  Best-effort: a 404 (already answered/expired) is not an error here, the
+ *  caller only cares that the record is gone either way. */
+export async function cancelCliQueueTask(taskId: string): Promise<void> {
+  const { baseUrl, token } = requireConfig();
+  const res = await fetch(`${baseUrl}/cli-tasks/${encodeURIComponent(taskId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Failed to cancel queued task (${res.status})`);
+  }
+}

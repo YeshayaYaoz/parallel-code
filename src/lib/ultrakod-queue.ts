@@ -53,3 +53,7 @@ export interface CliQueueTaskStatus {
 export async function pollCliQueueTask(taskId: string): Promise<CliQueueTaskStatus> {
   return invoke<CliQueueTaskStatus>(IPC.UltrakodQueuePollTask, { taskId });
 }
+
+export async function cancelCliQueueTask(taskId: string): Promise<void> {
+  await invoke(IPC.UltrakodQueueCancelTask, { taskId });
+}

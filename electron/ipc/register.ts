@@ -104,6 +104,7 @@ import {
   clearUltrakodQueueConfig,
   submitCliQueueTask,
   pollCliQueueTask,
+  cancelCliQueueTask,
 } from './ultrakod-queue.js';
 import { setMinimaxApiKey } from './ask-code-minimax.js';
 import { getSystemMonospaceFonts } from './system-fonts.js';
@@ -1909,6 +1910,11 @@ export function registerAllHandlers(win: BrowserWindow): void {
   ipcMain.handle(IPC.UltrakodQueuePollTask, (_e, args) => {
     assertString(args.taskId, 'taskId');
     return pollCliQueueTask(args.taskId);
+  });
+
+  ipcMain.handle(IPC.UltrakodQueueCancelTask, (_e, args) => {
+    assertString(args.taskId, 'taskId');
+    return cancelCliQueueTask(args.taskId);
   });
 
   // --- Forward window events to renderer ---

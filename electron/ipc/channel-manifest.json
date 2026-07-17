@@ -149,5 +149,6 @@
   "UltrakodQueueSetConfig": "ultrakod_queue_set_config",
   "UltrakodQueueClearConfig": "ultrakod_queue_clear_config",
   "UltrakodQueueSubmitTask": "ultrakod_queue_submit_task",
-  "UltrakodQueuePollTask": "ultrakod_queue_poll_task"
+  "UltrakodQueuePollTask": "ultrakod_queue_poll_task",
+  "UltrakodQueueCancelTask": "ultrakod_queue_cancel_task"
 }
