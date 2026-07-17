@@ -27,6 +27,10 @@ export function RateLimitQueueBanner(props: RateLimitQueueBannerProps) {
   const queuedId = () => task()?.queuedRailwayTaskId;
   const showOffer = () =>
     isAgentRateLimited(props.agentId) && !queuedId() && !submitting() && !switching();
+  // Live cross-provider switching is an Ultrakod-mode capability — plain CLI
+  // sessions (claude-code, codex, etc. run directly, not through Ultrakod)
+  // only get the queue-remotely/cancel options, available on every CLI.
+  const canSwitch = () => !!task()?.ultrakodMode;
 
   async function handleQueue(mode: 'cheap' | 'balanced' | 'extra' = 'balanced'): Promise<void> {
     const currentTask = task();
@@ -117,9 +121,11 @@ export function RateLimitQueueBanner(props: RateLimitQueueBannerProps) {
         </Show>
         <Show when={!queuedId() && showOffer()}>
           <span style={{ flex: '1' }}>Usage limit detected on this terminal.</span>
-          <button type="button" onClick={() => void handleSwitch()} style={secondaryButtonStyle}>
-            Switch to next best model
-          </button>
+          <Show when={canSwitch()}>
+            <button type="button" onClick={() => void handleSwitch()} style={secondaryButtonStyle}>
+              Switch to next best model
+            </button>
+          </Show>
           <button
             type="button"
             onClick={() => {
