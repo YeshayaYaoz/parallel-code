@@ -9,6 +9,7 @@ import { markAgentSpawned } from './taskStatus';
 import { getLocalDateKey } from '../lib/date';
 import type {
   Agent,
+  AskCodeProvider,
   Task,
   PersistedState,
   PersistedTask,
@@ -600,7 +601,16 @@ export async function loadState(): Promise<void> {
           ? rawDockerImage.trim()
           : 'parallel-code-agent:latest';
 
-      s.askCodeProvider = raw.askCodeProvider === 'minimax' ? 'minimax' : 'claude';
+      const validAskCodeProviders: AskCodeProvider[] = [
+        'minimax',
+        'anthropic',
+        'openai',
+        'gemini',
+        'deepseek',
+      ];
+      s.askCodeProvider = validAskCodeProviders.includes(raw.askCodeProvider as AskCodeProvider)
+        ? (raw.askCodeProvider as AskCodeProvider)
+        : 'claude';
 
       // Restore custom agents
       if (Array.isArray(raw.customAgents)) {

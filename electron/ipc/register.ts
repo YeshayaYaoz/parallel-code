@@ -88,7 +88,7 @@ import {
   quitAndInstallUpdate,
 } from './updater.js';
 import { spawn } from 'child_process';
-import { askAboutCode, cancelAskAboutCode } from './ask-code.js';
+import { askAboutCode, cancelAskAboutCode, type AskCodeProvider } from './ask-code.js';
 import {
   startGitHubDeviceFlow,
   waitForGitHubDeviceToken,
@@ -107,6 +107,10 @@ import {
   cancelCliQueueTask,
 } from './ultrakod-queue.js';
 import { setMinimaxApiKey } from './ask-code-minimax.js';
+import { setAnthropicApiKey } from './ask-code-anthropic.js';
+import { setOpenaiApiKey } from './ask-code-openai.js';
+import { setGeminiApiKey } from './ask-code-gemini.js';
+import { setDeepseekApiKey } from './ask-code-deepseek.js';
 import { getSystemMonospaceFonts } from './system-fonts.js';
 import path from 'path';
 import {
@@ -906,19 +910,50 @@ export function registerAllHandlers(win: BrowserWindow): void {
     setMinimaxApiKey(args.key);
   });
 
+  ipcMain.handle(IPC.SetAnthropicApiKey, (_e, args) => {
+    assertString(args.key, 'key');
+    setAnthropicApiKey(args.key);
+  });
+
+  ipcMain.handle(IPC.SetOpenaiApiKey, (_e, args) => {
+    assertString(args.key, 'key');
+    setOpenaiApiKey(args.key);
+  });
+
+  ipcMain.handle(IPC.SetGeminiApiKey, (_e, args) => {
+    assertString(args.key, 'key');
+    setGeminiApiKey(args.key);
+  });
+
+  ipcMain.handle(IPC.SetDeepseekApiKey, (_e, args) => {
+    assertString(args.key, 'key');
+    setDeepseekApiKey(args.key);
+  });
+
+  const DIRECT_API_ASK_CODE_PROVIDERS: readonly AskCodeProvider[] = [
+    'minimax',
+    'anthropic',
+    'openai',
+    'gemini',
+    'deepseek',
+  ];
+
   ipcMain.handle(IPC.AskAboutCode, (_e, args) => {
     assertString(args.requestId, 'requestId');
     assertString(args.prompt, 'prompt');
     assertString(args.onOutput?.__CHANNEL_ID__, 'channelId');
     validatePath(args.cwd, 'cwd');
-    const provider: string | undefined =
-      typeof args.provider === 'string' ? args.provider : undefined;
+    const provider: AskCodeProvider = DIRECT_API_ASK_CODE_PROVIDERS.includes(
+      args.provider as AskCodeProvider,
+    )
+      ? (args.provider as AskCodeProvider)
+      : 'claude';
     askAboutCode(win, {
       requestId: args.requestId,
       channelId: args.onOutput.__CHANNEL_ID__,
       prompt: args.prompt,
       cwd: args.cwd,
-      provider: provider === 'minimax' ? 'minimax' : 'claude',
+      provider,
     });
   });
 

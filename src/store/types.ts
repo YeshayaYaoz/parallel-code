@@ -10,6 +10,8 @@ export type KeybindingOverride = Partial<Pick<KeyBinding, 'key' | 'modifiers'>> 
 
 export type GitIsolationMode = 'worktree' | 'direct' | 'none';
 
+export type AskCodeProvider = 'claude' | 'minimax' | 'anthropic' | 'openai' | 'gemini' | 'deepseek';
+
 export interface StagedNotification {
   batchId: string;
   notificationIds: string[];
@@ -271,7 +273,7 @@ export interface PersistedState {
   editorCommand?: string;
   dockerImage?: string;
   shareDockerAgentAuth?: boolean;
-  askCodeProvider?: 'claude' | 'minimax';
+  askCodeProvider?: AskCodeProvider;
   customAgents?: AgentDef[];
   keybindingMigrationDismissed?: boolean;
   focusMode?: boolean;
@@ -369,7 +371,7 @@ export interface AppStore {
   dockerImage: string;
   dockerAvailable: boolean;
   shareDockerAgentAuth: boolean;
-  askCodeProvider: 'claude' | 'minimax';
+  askCodeProvider: AskCodeProvider;
   newTaskDropUrl: string | null;
   newTaskPrefillPrompt: { prompt: string; projectId: string | null } | null;
   missingProjectIds: Record<string, true>;

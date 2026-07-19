@@ -29,6 +29,10 @@ import {
   setShareDockerAgentAuth,
   setAskCodeProvider,
   setMinimaxApiKey,
+  setAnthropicApiKey,
+  setOpenaiApiKey,
+  setGeminiApiKey,
+  setDeepseekApiKey,
   setAppearanceMode,
   setLightTheme,
   setDarkTheme,
@@ -44,6 +48,7 @@ import { CustomAgentEditor } from './CustomAgentEditor';
 import { GitHubConnectSection } from './GitHubConnectSection';
 import { UltrakodQueueSection } from './UltrakodQueueSection';
 import { mod } from '../lib/platform';
+import type { AskCodeProvider } from '../store/types';
 import { DEFAULT_DOCKER_IMAGE, PROJECT_DOCKERFILE_RELATIVE_PATH } from '../lib/docker';
 
 interface SettingsDialogProps {
@@ -250,6 +255,53 @@ function ThemeGrid(props: {
     </div>
   );
 }
+
+/** Ask-code providers that call an API directly (no CLI, no install/PATH/auth-flow
+ *  dependency on a third-party tool) — everything except the 'claude' CLI fallback. */
+const DIRECT_API_ASK_CODE_PROVIDERS: Array<{
+  id: Exclude<AskCodeProvider, 'claude'>;
+  label: string;
+  envVarName: string;
+  setKey: (key: string) => void;
+  description: string;
+}> = [
+  {
+    id: 'anthropic',
+    label: 'Anthropic (Claude API)',
+    envVarName: 'ANTHROPIC_API_KEY',
+    setKey: setAnthropicApiKey,
+    description: 'Calls the Anthropic Messages API directly — no Claude Code CLI required.',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI (GPT-4o)',
+    envVarName: 'OPENAI_API_KEY',
+    setKey: setOpenaiApiKey,
+    description: 'Calls the OpenAI API directly — no CLI required.',
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini (3.5 Flash)',
+    envVarName: 'GEMINI_API_KEY',
+    setKey: setGeminiApiKey,
+    description: 'Calls the Gemini API directly — no CLI required.',
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek (Chat)',
+    envVarName: 'DEEPSEEK_API_KEY',
+    setKey: setDeepseekApiKey,
+    description: 'Calls the DeepSeek API directly — no CLI required.',
+  },
+  {
+    id: 'minimax',
+    label: 'MiniMax (M2.7)',
+    envVarName: 'MINIMAX_API_KEY',
+    setKey: setMinimaxApiKey,
+    description:
+      'Uses MiniMax M2.7 (204K context) via the OpenAI-compatible API — no CLI required.',
+  },
+];
 
 export function SettingsDialog(props: SettingsDialogProps) {
   const titleId = createUniqueId();
@@ -584,9 +636,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </span>
                 <select
                   value={store.askCodeProvider}
-                  onChange={(e) =>
-                    setAskCodeProvider(e.currentTarget.value as 'claude' | 'minimax')
-                  }
+                  onChange={(e) => setAskCodeProvider(e.currentTarget.value as AskCodeProvider)}
                   style={{
                     flex: '1',
                     background: theme.taskPanelBg,
@@ -600,43 +650,51 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   }}
                 >
                   <option value="claude">Claude Code (claude CLI)</option>
-                  <option value="minimax">MiniMax (M2.7)</option>
+                  <For each={DIRECT_API_ASK_CODE_PROVIDERS}>
+                    {(p) => <option value={p.id}>{p.label}</option>}
+                  </For>
                 </select>
               </label>
-              <Show when={store.askCodeProvider === 'minimax'}>
-                <label
-                  style={{
-                    display: 'flex',
-                    'align-items': 'center',
-                    gap: '10px',
-                    'margin-top': '4px',
-                  }}
-                >
-                  <span style={{ 'font-size': '13px', color: theme.fg, 'white-space': 'nowrap' }}>
-                    MiniMax API key
-                  </span>
-                  <input
-                    type="password"
-                    onInput={(e) => setMinimaxApiKey(e.currentTarget.value)}
-                    placeholder="Enter your MINIMAX_API_KEY (stored in memory only)"
-                    style={{
-                      flex: '1',
-                      background: theme.taskPanelBg,
-                      border: `1px solid ${theme.border}`,
-                      'border-radius': '6px',
-                      padding: '6px 10px',
-                      color: theme.fg,
-                      'font-size': '13px',
-                      'font-family': "'JetBrains Mono', monospace",
-                      outline: 'none',
-                    }}
-                  />
-                </label>
-              </Show>
+              <For each={DIRECT_API_ASK_CODE_PROVIDERS}>
+                {(p) => (
+                  <Show when={store.askCodeProvider === p.id}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        'align-items': 'center',
+                        gap: '10px',
+                        'margin-top': '4px',
+                      }}
+                    >
+                      <span
+                        style={{ 'font-size': '13px', color: theme.fg, 'white-space': 'nowrap' }}
+                      >
+                        {p.label} API key
+                      </span>
+                      <input
+                        type="password"
+                        onInput={(e) => p.setKey(e.currentTarget.value)}
+                        placeholder={`Enter your ${p.envVarName} (stored in memory only)`}
+                        style={{
+                          flex: '1',
+                          background: theme.taskPanelBg,
+                          border: `1px solid ${theme.border}`,
+                          'border-radius': '6px',
+                          padding: '6px 10px',
+                          color: theme.fg,
+                          'font-size': '13px',
+                          'font-family': "'JetBrains Mono', monospace",
+                          outline: 'none',
+                        }}
+                      />
+                    </label>
+                  </Show>
+                )}
+              </For>
               <span style={{ 'font-size': '11px', color: theme.fgSubtle }}>
-                {store.askCodeProvider === 'minimax'
-                  ? 'Uses MiniMax M2.7 (204K context) via the OpenAI-compatible API — no Claude Code CLI required.'
-                  : 'Uses the claude CLI to answer questions about selected code. Requires Claude Code to be installed.'}
+                {DIRECT_API_ASK_CODE_PROVIDERS.find((p) => p.id === store.askCodeProvider)
+                  ?.description ??
+                  'Uses the claude CLI to answer questions about selected code. Requires Claude Code to be installed.'}
               </span>
             </div>
           </div>

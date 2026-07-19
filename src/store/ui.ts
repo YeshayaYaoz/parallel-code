@@ -7,7 +7,7 @@ import type { LookPreset, AppearanceMode } from '../lib/look';
 import { osIsDark } from '../lib/os-appearance';
 import type { CustomTheme } from '../lib/custom-theme';
 import { themeToCss } from '../lib/custom-theme';
-import type { PersistedWindowState, TaskViewportVisibility } from './types';
+import type { AskCodeProvider, PersistedWindowState, TaskViewportVisibility } from './types';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 
@@ -229,13 +229,37 @@ export function setDockerImage(image: string): void {
   setStore('dockerImage', image || 'parallel-code-agent:latest');
 }
 
-export function setAskCodeProvider(provider: 'claude' | 'minimax'): void {
+export function setAskCodeProvider(provider: AskCodeProvider): void {
   setStore('askCodeProvider', provider);
 }
 
 export function setMinimaxApiKey(key: string): void {
   invoke(IPC.SetMinimaxApiKey, { key: key.trim() }).catch((e) =>
     console.warn('Failed to set MiniMax API key:', e),
+  );
+}
+
+export function setAnthropicApiKey(key: string): void {
+  invoke(IPC.SetAnthropicApiKey, { key: key.trim() }).catch((e) =>
+    console.warn('Failed to set Anthropic API key:', e),
+  );
+}
+
+export function setOpenaiApiKey(key: string): void {
+  invoke(IPC.SetOpenaiApiKey, { key: key.trim() }).catch((e) =>
+    console.warn('Failed to set OpenAI API key:', e),
+  );
+}
+
+export function setGeminiApiKey(key: string): void {
+  invoke(IPC.SetGeminiApiKey, { key: key.trim() }).catch((e) =>
+    console.warn('Failed to set Gemini API key:', e),
+  );
+}
+
+export function setDeepseekApiKey(key: string): void {
+  invoke(IPC.SetDeepseekApiKey, { key: key.trim() }).catch((e) =>
+    console.warn('Failed to set DeepSeek API key:', e),
   );
 }
 

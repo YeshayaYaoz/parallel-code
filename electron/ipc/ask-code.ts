@@ -7,6 +7,26 @@ import {
   isMinimaxRequestActive,
 } from './ask-code-minimax.js';
 import {
+  askAboutCodeAnthropic,
+  cancelAskAboutCodeAnthropic,
+  isAnthropicRequestActive,
+} from './ask-code-anthropic.js';
+import {
+  askAboutCodeOpenai,
+  cancelAskAboutCodeOpenai,
+  isOpenaiRequestActive,
+} from './ask-code-openai.js';
+import {
+  askAboutCodeGemini,
+  cancelAskAboutCodeGemini,
+  isGeminiRequestActive,
+} from './ask-code-gemini.js';
+import {
+  askAboutCodeDeepseek,
+  cancelAskAboutCodeDeepseek,
+  isDeepseekRequestActive,
+} from './ask-code-deepseek.js';
+import {
   AskCodeSession,
   ASK_CODE_MAX_CONCURRENT,
   ASK_CODE_TIMEOUT_MS,
@@ -15,7 +35,52 @@ import {
   assertPromptWithinLimit,
 } from './request-registry.js';
 
-export type AskCodeProvider = 'claude' | 'minimax';
+export type AskCodeProvider = 'claude' | 'minimax' | 'anthropic' | 'openai' | 'gemini' | 'deepseek';
+
+const DIRECT_API_PROVIDERS = new Map<
+  AskCodeProvider,
+  {
+    ask: (
+      win: BrowserWindow,
+      args: { requestId: string; channelId: string; prompt: string },
+    ) => void;
+    cancel: (requestId: string) => void;
+    isActive: (requestId: string) => boolean;
+  }
+>([
+  [
+    'minimax',
+    {
+      ask: askAboutCodeMinimax,
+      cancel: cancelAskAboutCodeMinimax,
+      isActive: isMinimaxRequestActive,
+    },
+  ],
+  [
+    'anthropic',
+    {
+      ask: askAboutCodeAnthropic,
+      cancel: cancelAskAboutCodeAnthropic,
+      isActive: isAnthropicRequestActive,
+    },
+  ],
+  [
+    'openai',
+    { ask: askAboutCodeOpenai, cancel: cancelAskAboutCodeOpenai, isActive: isOpenaiRequestActive },
+  ],
+  [
+    'gemini',
+    { ask: askAboutCodeGemini, cancel: cancelAskAboutCodeGemini, isActive: isGeminiRequestActive },
+  ],
+  [
+    'deepseek',
+    {
+      ask: askAboutCodeDeepseek,
+      cancel: cancelAskAboutCodeDeepseek,
+      isActive: isDeepseekRequestActive,
+    },
+  ],
+]);
 
 interface AskCodeRequest {
   requestId: string;
@@ -33,10 +98,13 @@ const activeRequests = new RequestRegistry<ChildProcess>({
 export function askAboutCode(win: BrowserWindow, args: AskCodeRequest): void {
   const { requestId, channelId, prompt, cwd, provider } = args;
 
-  // Route to MiniMax backend when configured
-  if (provider === 'minimax') {
+  // Route to a direct-API provider when configured — none of these spawn a
+  // CLI process, so they have no PATH/install/auth-flow dependency on a
+  // third-party tool.
+  const directProvider = provider && DIRECT_API_PROVIDERS.get(provider);
+  if (directProvider) {
     activeRequests.cancel(requestId);
-    askAboutCodeMinimax(win, { requestId, channelId, prompt });
+    directProvider.ask(win, { requestId, channelId, prompt });
     return;
   }
 
@@ -115,8 +183,8 @@ export function askAboutCode(win: BrowserWindow, args: AskCodeRequest): void {
 }
 
 export function cancelAskAboutCode(requestId: string): void {
-  if (isMinimaxRequestActive(requestId)) {
-    cancelAskAboutCodeMinimax(requestId);
+  for (const { isActive, cancel } of DIRECT_API_PROVIDERS.values()) {
+    if (isActive(requestId)) cancel(requestId);
   }
 
   activeRequests.cancel(requestId);
