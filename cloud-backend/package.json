@@ -5,13 +5,15 @@
   "description": "Standalone (non-Electron) backend service: git worktree management + CLI agent PTY spawning, extracted from the desktop app's main process so a project's tasks can run in a cloud container instead of on one local machine.",
   "type": "module",
   "scripts": {
+    "sync-registry": "node scripts/sync-registry.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "dev": "npm run sync-registry && tsx src/index.ts",
+    "test": "npm run sync-registry && vitest run",
+    "typecheck": "npm run sync-registry && tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "node-pty": "^1.1.0",
     "ws": "^8.18.0"
   },
