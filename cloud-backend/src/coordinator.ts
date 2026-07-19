@@ -2099,6 +2099,27 @@ export class Coordinator {
     return this.coordinators.has(coordinatorTaskId);
   }
 
+  /**
+   * Read-only snapshot of registered coordinators' identity/location, for
+   * persisting across a process restart (see coordinator-persistence.ts).
+   * Deliberately excludes mcpServerInfo/tokens — those are ephemeral and are
+   * re-established fresh via setMCPServerInfo on the next boot, exactly like
+   * hydrateTask already assumes for restored tasks.
+   */
+  getRegisteredCoordinators(): Array<{
+    coordinatorTaskId: string;
+    projectId: string;
+    branchName?: string;
+    worktreePath?: string;
+  }> {
+    return Array.from(this.coordinators.values()).map((state) => ({
+      coordinatorTaskId: state.taskId,
+      projectId: state.projectId,
+      branchName: state.branchName,
+      worktreePath: state.worktreePath,
+    }));
+  }
+
   registerCoordinator(
     coordinatorTaskId: string,
     projectId: string,

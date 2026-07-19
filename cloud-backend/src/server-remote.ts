@@ -22,6 +22,9 @@ import { parseClientMessage, type ServerMessage, type RemoteAgent } from './prot
 import type { Coordinator } from './coordinator.js';
 import { validateBranchName } from './validation.js';
 import type { ApiTaskDetail, LandSelfInput, SubtaskVerification } from './types.js';
+import { saveAppState, loadAppState } from './persistence.js';
+
+const MAX_STATE_BODY_BYTES = 8 * 1024 * 1024;
 
 // --- MCP log ring buffer ---
 export interface MCPLogEntry {
@@ -267,6 +270,30 @@ function readJsonBody(
       } catch {
         resolve({});
       }
+    });
+    req.on('error', reject);
+  });
+}
+
+/** Read a raw request body as text with a hard size cap, no JSON parsing. */
+function readRawBody(req: IncomingMessage, maxBytes: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let tooLarge = false;
+    req.on('data', (chunk: Buffer) => {
+      if (tooLarge) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        tooLarge = true;
+        reject(new Error('Body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (tooLarge) return;
+      resolve(Buffer.concat(chunks).toString('utf8'));
     });
     req.on('error', reject);
   });
@@ -847,6 +874,43 @@ export function startRemoteServer(opts: {
           res.end(JSON.stringify({ error: 'forbidden' }));
           return;
         }
+      }
+
+      // --- Remote app state (Phase 3: multi-device state sync) ---
+      // Full project/task state — as sensitive as it gets, so this is
+      // coordinator-token-only. Mobile/paired/subtask tokens are already
+      // rejected by their allow-list checks above before reaching here.
+      if (url.pathname === '/api/state') {
+        if (tokenClass !== 'coordinator') return jsonEnd(403, { error: 'forbidden' });
+
+        if (req.method === 'GET') {
+          const state = loadAppState();
+          if (state === null) return jsonEnd(404, { error: 'no state saved' });
+          res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'application/json' });
+          res.end(state);
+          return;
+        }
+
+        if (req.method === 'PUT') {
+          readRawBody(req, MAX_STATE_BODY_BYTES)
+            .then((raw) => {
+              try {
+                saveAppState(raw);
+              } catch (err) {
+                return jsonEnd(400, { error: `invalid state: ${String(err)}` });
+              }
+              jsonEnd(200, { ok: true });
+            })
+            .catch((err) => {
+              if (err instanceof Error && err.message === 'Body too large') {
+                return jsonEnd(413, { error: 'Request body too large' });
+              }
+              jsonEnd(400, { error: 'bad request' });
+            });
+          return;
+        }
+
+        return jsonEnd(405, { error: 'method not allowed' });
       }
 
       if (url.pathname === '/api/agents' && req.method === 'GET') {

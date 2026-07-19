@@ -11,7 +11,9 @@ import { fileURLToPath } from 'url';
 import { Coordinator } from './coordinator.js';
 import { startRemoteServer } from './server-remote.js';
 import { getAgentMeta } from './pty.js';
-import { info as logInfo } from './log.js';
+import { info as logInfo, warn as logWarn } from './log.js';
+import { loadCoordinatorSnapshot, saveCoordinatorSnapshot } from './persistence.js';
+import { snapshotCoordinatorState, restoreCoordinatorState } from './coordinator-persistence.js';
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,8 +22,23 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const STATIC_DIR = process.env.STATIC_DIR ?? path.join(thisDir, '..', 'public');
 
 const coordinator = new Coordinator();
+
+// Phase 4 (unattended coordinator): resume whatever coordinators/sub-tasks
+// were known before this process last stopped, so a Fly machine restart
+// doesn't leave the API reporting an empty task list. See
+// coordinator-persistence.ts for what is (and isn't) restored.
+const previousSnapshot = loadCoordinatorSnapshot();
+if (previousSnapshot) {
+  restoreCoordinatorState(coordinator, previousSnapshot);
+}
+
 coordinator.setNotifier((channel, data) => {
   logInfo('coordinator', channel, data as Record<string, unknown>);
+  try {
+    saveCoordinatorSnapshot(snapshotCoordinatorState(coordinator));
+  } catch (err) {
+    logWarn('coordinator-persistence', `failed to save snapshot: ${String(err)}`);
+  }
 });
 
 const server = await startRemoteServer({

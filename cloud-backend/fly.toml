@@ -1,0 +1,46 @@
+# Fly.io app config for cloud-backend — one machine per project (see
+# README.md). Scale-to-zero is the whole cost story here: a personal,
+# bursty workload should cost single-digit dollars a month, not the ~$30-50/mo
+# an always-on shared-cpu-1x machine would run.
+#
+# `fly launch --no-deploy --copy-config` will want to rewrite the `app` name —
+# that's expected, each project needs its own app (see README.md).
+app = "parallel-code-cloud-backend"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  DATA_DIR = "/data"
+
+[[mounts]]
+  source = "cloud_backend_data"
+  destination = "/data"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 7777
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # 0 min machines running is the actual scale-to-zero lever — a project with
+  # no open terminal and no running coordinator costs nothing while idle.
+  min_machines_running = 0
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

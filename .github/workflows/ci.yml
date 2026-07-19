@@ -73,6 +73,40 @@ jobs:
         run: npm run build
         working-directory: ultrakod-listener
 
+  cloud-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud-backend/package-lock.json
+
+      - run: npm ci
+        working-directory: cloud-backend
+
+      - name: Verify committed registry.ts matches electron/ultrakod/registry.ts
+        run: |
+          npm run sync-registry --prefix cloud-backend
+          git diff --exit-code -- cloud-backend/src/registry.ts || {
+            echo "::error::cloud-backend/src/registry.ts is stale. Run 'npm run sync-registry' in cloud-backend/ and commit the result." >&2
+            exit 1
+          }
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: cloud-backend
+
+      - name: Test
+        run: npm test
+        working-directory: cloud-backend
+
+      - name: Build
+        run: npm run build
+        working-directory: cloud-backend
+
   windows-test:
     runs-on: windows-latest
     steps:
