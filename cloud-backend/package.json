@@ -1,0 +1,25 @@
+{
+  "name": "cloud-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone (non-Electron) backend service: git worktree management + CLI agent PTY spawning, extracted from the desktop app's main process so a project's tasks can run in a cloud container instead of on one local machine.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
