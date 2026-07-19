@@ -807,10 +807,16 @@ export function startRemoteServer(opts: {
       }
 
       // --- Paired-mobile task creation ---
-      // GET projects for the picker + POST a new top-level task. Both require the
-      // elevated "paired" token; the read-only mobile token is rejected here.
+      // GET projects for the picker + POST a new top-level task. Requires the
+      // elevated "paired" token (PIN-pairing, meaningful when a physical
+      // desktop screen exists to show the PIN on) — or, in this headless
+      // service, the "coordinator" token instead: whoever holds it already
+      // read it from the process's own boot logs (`fly logs`), the same
+      // trust basis as reading a PIN off a screen. The read-only mobile
+      // token is rejected either way.
       if (url.pathname === '/api/mobile/projects' || url.pathname === '/api/mobile/tasks') {
-        if (tokenClass !== 'paired') return jsonEnd(403, { error: 'forbidden' });
+        if (tokenClass !== 'paired' && tokenClass !== 'coordinator')
+          return jsonEnd(403, { error: 'forbidden' });
 
         if (url.pathname === '/api/mobile/projects' && req.method === 'GET') {
           if (!opts.getProjects) return jsonEnd(503, { error: 'task creation unavailable' });

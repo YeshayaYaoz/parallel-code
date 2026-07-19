@@ -23,6 +23,71 @@ npm run typecheck
 automatically before `dev`/`test`/`typecheck`, and CI fails if the committed
 copy has drifted.
 
+## Configuration
+
+| Env var         | Default            | Meaning                                                             |
+| --------------- | ------------------ | -------------------------------------------------------------------- |
+| `PORT`          | `7777`             | HTTP/WS listen port                                                   |
+| `HOST`          | `0.0.0.0`          | Listen address                                                       |
+| `DATA_DIR`      | `~/.parallel-code-cloud` | Where `state.json`/`coordinator-snapshot.json` live (the Fly volume mount point in production) |
+| `PROJECT_ROOT`  | *(unset)*          | Git repo checkout this instance manages. **Required** for plain task creation (`/api/mobile/*`) — without it those routes 503. |
+| `PROJECT_ID`    | `default`          | Arbitrary ID returned by `GET /api/mobile/projects`                   |
+| `PROJECT_NAME`  | basename of `PROJECT_ROOT` | Display name for the same                                      |
+| `AGENT_COMMAND` | `claude`           | CLI spawned for a newly created plain task                           |
+| `AGENT_ARGS`    | `[]`               | JSON array of extra args, e.g. `'["--model","claude-opus-4-8"]'`     |
+
+## Creating a task
+
+On boot, the service logs two credentials — don't confuse them:
+
+```
+[server] cloud-backend listening on http://<host>:7777?token=<mobile-token>
+[server] operator (coordinator) token: <coordinator-token>
+```
+
+The URL's embedded token is **mobile-scoped** (read-only agent status — safe
+to hand to a phone). The **coordinator token**, logged separately, is the
+full-access operator credential: it's what lets you create tasks, read/write
+`/api/state`, and drive the coordinator API. Treat it like an SSH key — it's
+meant for whoever can read this process's own logs (`fly logs`), not for
+pasting into a browser URL bar.
+
+With `PROJECT_ROOT` set, create and drive a task with plain `curl` — no
+desktop app or MCP client required:
+
+```sh
+TOKEN=<coordinator-token>
+
+# What project(s) this instance manages
+curl -H "Authorization: Bearer $TOKEN" http://localhost:7777/api/mobile/projects
+
+# Create a task — this makes a real git worktree + spawns AGENT_COMMAND in it
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"projectId":"default","name":"fix-the-bug","prompt":"investigate the crash"}' \
+  http://localhost:7777/api/mobile/tasks
+# => {"taskId":"..."}
+
+# See it running
+curl -H "Authorization: Bearer $TOKEN" http://localhost:7777/api/agents
+
+# Read its scrollback (base64) — decode to see terminal output
+curl -H "Authorization: Bearer $TOKEN" http://localhost:7777/api/agents/<agentId>
+```
+
+To actually interact with it live (type into it, watch it stream), connect a
+WebSocket to `ws://<host>:<port>` with `{"type":"auth","token":"<coordinator
+or mobile token>"}`, then `{"type":"subscribe","agentId":"..."}` and
+`{"type":"input","agentId":"...","data":"...\n"}` — this is exactly the
+protocol `src/remote/ws.ts` (the desktop app's bundled mobile client) already
+speaks, so pointing that client at this service's URL works today with no
+client-side changes.
+
+**Not yet wired**: the desktop Electron app itself has no "point at a remote
+cloud-backend instead of my local one" setting — today it always runs its
+own local backend. Driving a cloud-backend instance means talking to its
+REST/WS API directly (as above), or pointing the `src/remote` mobile SPA at
+it; it isn't yet a toggle inside the main desktop UI.
+
 ## Deploying to Fly.io
 
 One Fly app/machine per **project**, not per task — a project's tasks all

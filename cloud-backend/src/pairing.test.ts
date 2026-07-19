@@ -29,6 +29,7 @@ type Resp = { status: number; json: () => Promise<unknown> };
 let port = 0;
 let stop: () => Promise<void>;
 let mobileToken = '';
+let coordinatorToken = '';
 let generatePin: () => { pin: string; expiresAt: number };
 const createTaskFromMobile = vi.fn(async () => ({ taskId: 'task-123' }));
 const getProjects = vi.fn(async () => [{ id: 'proj-1', name: 'Repo One' }]);
@@ -81,6 +82,7 @@ beforeEach(async () => {
   port = srv.port;
   stop = srv.stop;
   mobileToken = srv.mobileToken;
+  coordinatorToken = srv.token;
   generatePin = srv.generatePairingPin;
 });
 
@@ -138,6 +140,19 @@ describe('paired-mobile routes', () => {
         })
       ).status,
     ).toBe(403);
+  });
+
+  it('coordinator token can also list projects and create tasks', async () => {
+    // Headless deployments have no physical screen to show a pairing PIN on,
+    // so the operator credential (read from this process's own boot logs)
+    // is accepted as an alternative to the PIN-pairing flow — see index.ts.
+    expect((await req('GET', '/api/mobile/projects', coordinatorToken)).status).toBe(200);
+    const res = await req('POST', '/api/mobile/tasks', coordinatorToken, {
+      projectId: 'proj-1',
+      name: 'Fix bug',
+      prompt: 'Investigate the crash',
+    });
+    expect(res.status).toBe(201);
   });
 
   it('paired token can list projects', async () => {
