@@ -25,6 +25,11 @@ export interface CreateTaskResult {
   id: string;
   branch_name: string;
   worktree_path: string;
+  /** Set only when the task was created on a remote cloud-backend instance
+   *  (see Project.remoteBackend) — the remote already spawned this agent as
+   *  part of task creation, so the renderer uses this instead of minting
+   *  its own agentId before calling SpawnAgent. */
+  agentId?: string;
 }
 
 export interface ChangedFile {

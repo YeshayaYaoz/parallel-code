@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { Coordinator } from './coordinator.js';
 import { startRemoteServer, type RemoteProject } from './server-remote.js';
-import { createTask } from './tasks.js';
+import { createTask, deleteTask } from './tasks.js';
 import { spawnAgent, writeToAgent, getAgentMeta } from './pty.js';
 import { info as logInfo, warn as logWarn } from './log.js';
 import { loadCoordinatorSnapshot, saveCoordinatorSnapshot } from './persistence.js';
@@ -44,10 +44,11 @@ if (!PROJECT_ROOT) {
   throw new Error(`PROJECT_ROOT does not exist: ${PROJECT_ROOT}`);
 }
 
-// Plain (non-coordinator) task names — the Coordinator only knows about its
-// own sub-tasks, so a task created via createTaskFromMobile below needs its
-// own name lookup for getTaskName.
+// Plain (non-coordinator) task bookkeeping — the Coordinator only tracks its
+// own sub-tasks, so tasks created via createTaskFromMobile below need their
+// own name lookup (getTaskName) and agentId/branchName record (for deletion).
 const plainTaskNames = new Map<string, string>();
+const plainTasks = new Map<string, { agentId: string; branchName: string }>();
 
 const coordinator = new Coordinator();
 
@@ -77,7 +78,11 @@ const server = await startRemoteServer({
     plainTaskNames.get(taskId) ?? coordinator.getTask(taskId)?.name ?? taskId,
   getAgentStatus: (agentId) => {
     const meta = getAgentMeta(agentId);
-    return { status: meta ? ('running' as const) : ('exited' as const), exitCode: null, lastLine: '' };
+    return {
+      status: meta ? ('running' as const) : ('exited' as const),
+      exitCode: null,
+      lastLine: '',
+    };
   },
   getCoordinator: () => coordinator,
   getProjects: PROJECT_ROOT
@@ -91,11 +96,12 @@ const server = await startRemoteServer({
         const result = await createTask(req.name, PROJECT_ROOT, [], 'task');
         plainTaskNames.set(result.id, req.name);
         const agentId = randomUUID();
+        plainTasks.set(result.id, { agentId, branchName: result.branch_name });
         spawnAgent({
           taskId: result.id,
           agentId,
-          command: AGENT_COMMAND,
-          args: AGENT_ARGS,
+          command: req.agentCommand ?? AGENT_COMMAND,
+          args: req.agentArgs ?? AGENT_ARGS,
           cwd: result.worktree_path,
           env: {},
           cols: 120,
@@ -114,7 +120,21 @@ const server = await startRemoteServer({
             }
           }, PLAIN_TASK_PROMPT_DELAY_MS);
         }
-        return { taskId: result.id };
+        return { taskId: result.id, agentId };
+      }
+    : undefined,
+  deleteTaskFromMobile: PROJECT_ROOT
+    ? async (taskId) => {
+        const record = plainTasks.get(taskId);
+        if (!record) throw new Error(`Unknown task: ${taskId}`);
+        await deleteTask({
+          agentIds: [record.agentId],
+          branchName: record.branchName,
+          deleteBranch: true,
+          projectRoot: PROJECT_ROOT,
+        });
+        plainTasks.delete(taskId);
+        plainTaskNames.delete(taskId);
       }
     : undefined,
 });

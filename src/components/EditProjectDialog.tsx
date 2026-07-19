@@ -3,7 +3,12 @@ import { Dialog } from './Dialog';
 import { updateProject, PASTEL_HUES, isProjectMissing, relinkProject } from '../store/store';
 import { sanitizeBranchPrefix, toBranchName } from '../lib/branch-name';
 import { theme, sectionLabelStyle } from '../lib/theme';
-import type { Project, TerminalBookmark, GitIsolationMode } from '../store/types';
+import type {
+  Project,
+  TerminalBookmark,
+  GitIsolationMode,
+  RemoteBackendConfig,
+} from '../store/types';
 import { SegmentedButtons } from './SegmentedButtons';
 import { ImportWorktreesDialog } from './ImportWorktreesDialog';
 import { CloseIcon } from './icons';
@@ -31,7 +36,54 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
   const [newCommand, setNewCommand] = createSignal('');
   const [showImportDialog, setShowImportDialog] = createSignal(false);
   const [confirmRemove, setConfirmRemove] = createSignal(false);
+  const [remoteUrl, setRemoteUrl] = createSignal('');
+  const [remoteToken, setRemoteToken] = createSignal('');
+  const [remoteProjectId, setRemoteProjectId] = createSignal('');
+  const [remoteTestStatus, setRemoteTestStatus] = createSignal<'idle' | 'testing' | 'ok' | 'error'>(
+    'idle',
+  );
+  const [remoteTestError, setRemoteTestError] = createSignal('');
   let nameRef!: HTMLInputElement;
+
+  async function testRemoteBackend() {
+    const url = remoteUrl().trim();
+    const token = remoteToken().trim();
+    if (!url || !token) {
+      setRemoteTestStatus('error');
+      setRemoteTestError('URL and token are both required');
+      return;
+    }
+    setRemoteTestStatus('testing');
+    setRemoteTestError('');
+    try {
+      const res = await fetch(new URL('/api/mobile/projects', url), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      const projects = (await res.json()) as Array<{ id: string; name: string }>;
+      if (projects.length === 0) {
+        throw new Error('That backend has no projects configured (check its PROJECT_ROOT)');
+      }
+      // cloud-backend manages exactly one project per process — take the
+      // first (only) one rather than asking the user to pick.
+      setRemoteProjectId(projects[0].id);
+      setRemoteTestStatus('ok');
+    } catch (err) {
+      setRemoteTestStatus('error');
+      setRemoteTestError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function clearRemoteBackend() {
+    setRemoteUrl('');
+    setRemoteToken('');
+    setRemoteProjectId('');
+    setRemoteTestStatus('idle');
+    setRemoteTestError('');
+  }
 
   // Sync signals when project prop changes
   createEffect(() => {
@@ -47,6 +99,11 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
     setBookmarks(p.terminalBookmarks ? [...p.terminalBookmarks] : []);
     setNewCommand('');
     setConfirmRemove(false);
+    setRemoteUrl(p.remoteBackend?.url ?? '');
+    setRemoteToken(p.remoteBackend?.token ?? '');
+    setRemoteProjectId(p.remoteBackend?.projectId ?? '');
+    setRemoteTestStatus(p.remoteBackend ? 'ok' : 'idle');
+    setRemoteTestError('');
     requestAnimationFrame(() => nameRef?.focus());
   });
 
@@ -66,11 +123,19 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
     setBookmarks(bookmarks().filter((b) => b.id !== id));
   }
 
-  const canSave = () => name().trim().length > 0;
+  // A remote URL/token pair only takes effect once tested — otherwise a typo
+  // would silently keep tasks running locally with no indication why.
+  const remoteBackendPending = () =>
+    (remoteUrl().trim() || remoteToken().trim()) && remoteTestStatus() !== 'ok';
+  const canSave = () => name().trim().length > 0 && !remoteBackendPending();
 
   function handleSave() {
     if (!canSave() || !props.project) return;
     const sanitizedPrefix = sanitizeBranchPrefix(branchPrefix());
+    const remoteBackend: RemoteBackendConfig | undefined =
+      remoteTestStatus() === 'ok' && remoteUrl().trim() && remoteToken().trim() && remoteProjectId()
+        ? { url: remoteUrl().trim(), token: remoteToken().trim(), projectId: remoteProjectId() }
+        : undefined;
     updateProject(props.project.id, {
       name: name().trim(),
       color: `hsl(${selectedHue()}, 70%, 75%)`,
@@ -80,6 +145,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
       defaultBaseBranch: defaultBaseBranch() || undefined,
       coverageReportPath: coverageReportPath().trim() || undefined,
       terminalBookmarks: bookmarks(),
+      remoteBackend,
     });
     props.onClose();
   }
@@ -382,6 +448,98 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
                 />
               </div>
             </Show>
+
+            <div style={{ display: 'flex', 'flex-direction': 'column', gap: '8px' }}>
+              <label style={sectionLabelStyle}>
+                Remote backend{' '}
+                <span style={{ opacity: '0.5', 'text-transform': 'none' }}>
+                  (run this project's tasks in the cloud instead of locally)
+                </span>
+              </label>
+              <input
+                class="input-field"
+                type="text"
+                value={remoteUrl()}
+                onInput={(e) => {
+                  setRemoteUrl(e.currentTarget.value);
+                  setRemoteTestStatus('idle');
+                  setRemoteProjectId('');
+                }}
+                placeholder="https://my-project.fly.dev"
+                style={{
+                  background: theme.bgInput,
+                  border: `1px solid ${theme.border}`,
+                  'border-radius': '8px',
+                  padding: '10px 14px',
+                  color: theme.fg,
+                  'font-size': '14px',
+                  'font-family': "'JetBrains Mono', monospace",
+                  outline: 'none',
+                }}
+              />
+              <input
+                class="input-field"
+                type="password"
+                value={remoteToken()}
+                onInput={(e) => {
+                  setRemoteToken(e.currentTarget.value);
+                  setRemoteTestStatus('idle');
+                  setRemoteProjectId('');
+                }}
+                placeholder="Operator (coordinator) token — from the service's boot logs"
+                style={{
+                  background: theme.bgInput,
+                  border: `1px solid ${theme.border}`,
+                  'border-radius': '8px',
+                  padding: '10px 14px',
+                  color: theme.fg,
+                  'font-size': '14px',
+                  'font-family': "'JetBrains Mono', monospace",
+                  outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', gap: '8px', 'align-items': 'center' }}>
+                <button
+                  type="button"
+                  class="btn-secondary"
+                  disabled={remoteTestStatus() === 'testing'}
+                  onClick={() => void testRemoteBackend()}
+                  style={{ padding: '6px 12px', 'font-size': '13px' }}
+                >
+                  {remoteTestStatus() === 'testing' ? 'Testing…' : 'Test connection'}
+                </button>
+                <Show when={remoteUrl().trim() || remoteToken().trim()}>
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    onClick={clearRemoteBackend}
+                    style={{ padding: '6px 12px', 'font-size': '13px' }}
+                  >
+                    Clear
+                  </button>
+                </Show>
+                <Show when={remoteTestStatus() === 'ok'}>
+                  <span style={{ color: theme.success ?? '#4caf50', 'font-size': '13px' }}>
+                    ✓ Connected — tasks for this project will run remotely
+                  </span>
+                </Show>
+              </div>
+              <Show when={remoteTestStatus() === 'error'}>
+                <div style={{ color: theme.error ?? '#e57373', 'font-size': '12px' }}>
+                  {remoteTestError()}
+                </div>
+              </Show>
+              <div
+                style={{
+                  'font-size': '12px',
+                  color: theme.fgSubtle,
+                  padding: '2px 2px 0',
+                }}
+              >
+                Docker mode, coordinator mode, and diff/merge review aren't available for remote
+                tasks yet — only creating a task and using its terminal.
+              </div>
+            </div>
 
             <div style={{ display: 'flex', 'flex-direction': 'column', gap: '8px' }}>
               <label style={sectionLabelStyle}>

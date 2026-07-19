@@ -25,16 +25,16 @@ copy has drifted.
 
 ## Configuration
 
-| Env var         | Default            | Meaning                                                             |
-| --------------- | ------------------ | -------------------------------------------------------------------- |
-| `PORT`          | `7777`             | HTTP/WS listen port                                                   |
-| `HOST`          | `0.0.0.0`          | Listen address                                                       |
-| `DATA_DIR`      | `~/.parallel-code-cloud` | Where `state.json`/`coordinator-snapshot.json` live (the Fly volume mount point in production) |
-| `PROJECT_ROOT`  | *(unset)*          | Git repo checkout this instance manages. **Required** for plain task creation (`/api/mobile/*`) — without it those routes 503. |
-| `PROJECT_ID`    | `default`          | Arbitrary ID returned by `GET /api/mobile/projects`                   |
-| `PROJECT_NAME`  | basename of `PROJECT_ROOT` | Display name for the same                                      |
-| `AGENT_COMMAND` | `claude`           | CLI spawned for a newly created plain task                           |
-| `AGENT_ARGS`    | `[]`               | JSON array of extra args, e.g. `'["--model","claude-opus-4-8"]'`     |
+| Env var         | Default                    | Meaning                                                                                                                        |
+| --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`          | `7777`                     | HTTP/WS listen port                                                                                                            |
+| `HOST`          | `0.0.0.0`                  | Listen address                                                                                                                 |
+| `DATA_DIR`      | `~/.parallel-code-cloud`   | Where `state.json`/`coordinator-snapshot.json` live (the Fly volume mount point in production)                                 |
+| `PROJECT_ROOT`  | _(unset)_                  | Git repo checkout this instance manages. **Required** for plain task creation (`/api/mobile/*`) — without it those routes 503. |
+| `PROJECT_ID`    | `default`                  | Arbitrary ID returned by `GET /api/mobile/projects`                                                                            |
+| `PROJECT_NAME`  | basename of `PROJECT_ROOT` | Display name for the same                                                                                                      |
+| `AGENT_COMMAND` | `claude`                   | CLI spawned for a newly created plain task                                                                                     |
+| `AGENT_ARGS`    | `[]`                       | JSON array of extra args, e.g. `'["--model","claude-opus-4-8"]'`                                                               |
 
 ## Creating a task
 
@@ -190,7 +190,7 @@ app's opaque state blob remotely instead of local disk — see
 
 Restarting the container (a `fly deploy`, a scale-to-zero wake, a crash) does
 not restart the CLI agent processes it had spawned — those die with the
-container like any other PTY would. What it *does* restore automatically on
+container like any other PTY would. What it _does_ restore automatically on
 boot is the coordinator's own bookkeeping — which coordinators were
 registered and which sub-tasks they knew about — from
 `$DATA_DIR/coordinator-snapshot.json`, so `GET /api/tasks` and friends don't

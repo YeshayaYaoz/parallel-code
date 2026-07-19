@@ -126,6 +126,33 @@ import type { RoutingMode } from '../ultrakod/registry.js';
 import { debug as logDebug, warn as logWarn, errMessage } from '../log.js';
 import { getMCPRemoteServerUrl, detectStaleDockerMCPUrl } from '../mcp/config.js';
 import { redactServerUrl } from '../remote/server.js';
+import {
+  isRemoteAgent,
+  subscribeRemoteAgent,
+  writeToRemoteAgent,
+  resizeRemoteAgent,
+  killRemoteAgent,
+  createRemoteTask,
+  deleteRemoteTask,
+  type RemoteBackendConfig,
+} from './remote-agent-bridge.js';
+
+/** Validates the optional per-project remote-backend config passed with
+ *  CreateTask/SpawnAgent/DeleteTask when a project is configured to run its
+ *  tasks on a cloud-backend instance instead of locally. */
+function assertOptionalRemoteBackend(
+  value: unknown,
+  label: string,
+): asserts value is RemoteBackendConfig | undefined {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`${label} must be an object`);
+  }
+  const v = value as Record<string, unknown>;
+  assertString(v.url, `${label}.url`);
+  assertString(v.token, `${label}.token`);
+  assertString(v.projectId, `${label}.projectId`);
+}
 
 export function selectMcpJsonDir(worktreePath: string | undefined, projectRoot: string): string {
   return worktreePath ?? projectRoot;
@@ -451,7 +478,7 @@ export function registerAllHandlers(win: BrowserWindow): void {
   let remoteServerPendingStop = false;
 
   // --- PTY commands ---
-  ipcMain.handle(IPC.SpawnAgent, (_e, args) => {
+  ipcMain.handle(IPC.SpawnAgent, async (_e, args) => {
     assertString(args.command, 'command');
     assertStringArray(args.args, 'args');
     assertString(args.taskId, 'taskId');
@@ -463,6 +490,18 @@ export function registerAllHandlers(win: BrowserWindow): void {
     assertOptionalBoolean(args.shareDockerAgentAuth, 'shareDockerAgentAuth');
     assertOptionalBoolean(args.attachExisting, 'attachExisting');
     assertOptionalBoolean(args.stepsEnabled, 'stepsEnabled');
+    assertOptionalRemoteBackend(args.remoteBackend, 'remoteBackend');
+    if (args.remoteBackend) {
+      // The remote backend already spawned this agent as part of task
+      // creation (see createRemoteTask) — "spawning" here just means
+      // subscribing to its already-running output for this window/channel.
+      return subscribeRemoteAgent(
+        win,
+        args.remoteBackend,
+        args.agentId,
+        args.onOutput.__CHANNEL_ID__,
+      );
+    }
     if (args.cwd) validatePath(args.cwd, 'cwd');
     if (!args.isShell && args.cwd) {
       try {
@@ -495,24 +534,34 @@ export function registerAllHandlers(win: BrowserWindow): void {
       assertString(args.taskId, 'taskId');
       if (coordinator?.isAutomationWriteInFlight(args.taskId)) return false;
     }
+    if (isRemoteAgent(args.agentId)) return writeToRemoteAgent(args.agentId, args.data);
     return writeToAgent(args.agentId, args.data);
   });
   ipcMain.handle(IPC.ResizeAgent, (_e, args) => {
     assertString(args.agentId, 'agentId');
     assertInt(args.cols, 'cols');
     assertInt(args.rows, 'rows');
+    if (isRemoteAgent(args.agentId)) {
+      return resizeRemoteAgent(args.agentId, args.cols, args.rows);
+    }
     return resizeAgent(args.agentId, args.cols, args.rows);
   });
   ipcMain.handle(IPC.PauseAgent, (_e, args) => {
     assertString(args.agentId, 'agentId');
+    // Flow-control pause/resume is a local-rendering concern (see pty.ts);
+    // a remote agent's output isn't batched/paused by this process, so
+    // there's nothing to do here besides not crashing.
+    if (isRemoteAgent(args.agentId)) return true;
     return pauseAgent(args.agentId);
   });
   ipcMain.handle(IPC.ResumeAgent, (_e, args) => {
     assertString(args.agentId, 'agentId');
+    if (isRemoteAgent(args.agentId)) return true;
     return resumeAgent(args.agentId);
   });
   ipcMain.handle(IPC.KillAgent, (_e, args) => {
     assertString(args.agentId, 'agentId');
+    if (isRemoteAgent(args.agentId)) return killRemoteAgent(args.agentId);
     return killAgent(args.agentId);
   });
   ipcMain.handle(IPC.CountRunningAgents, () => countRunningAgents());
@@ -553,6 +602,30 @@ export function registerAllHandlers(win: BrowserWindow): void {
   // --- Task commands ---
   ipcMain.handle(IPC.CreateTask, (_e, args) => {
     assertString(args.name, 'name');
+    assertOptionalRemoteBackend(args.remoteBackend, 'remoteBackend');
+    if (args.remoteBackend) {
+      // Remote tasks skip local worktree creation entirely — the remote
+      // backend creates its own worktree on its own filesystem. No prompt is
+      // sent here; the renderer's existing initial-prompt delivery logic
+      // (WriteToAgent once the agent's output shows it's ready) handles that
+      // transparently for remote agents too, same as local ones.
+      const result = createRemoteTask(args.remoteBackend, {
+        projectId: args.remoteBackend.projectId,
+        name: args.name,
+        prompt: '',
+      });
+      result
+        .then((r) => taskNames.set(r.taskId, args.name))
+        .catch((err: unknown) => {
+          logWarn('tasks', 'createRemoteTask resolution failed', { err: errMessage(err) });
+        });
+      return result.then((r) => ({
+        id: r.taskId,
+        branch_name: '(remote)',
+        worktree_path: '(remote)',
+        agentId: r.agentId,
+      }));
+    }
     validatePath(args.projectRoot, 'projectRoot');
     assertStringArray(args.symlinkDirs, 'symlinkDirs');
     assertOptionalString(args.branchPrefix, 'branchPrefix');
@@ -575,10 +648,15 @@ export function registerAllHandlers(win: BrowserWindow): void {
   });
   ipcMain.handle(IPC.DeleteTask, (_e, args) => {
     assertStringArray(args.agentIds, 'agentIds');
+    assertOptionalRemoteBackend(args.remoteBackend, 'remoteBackend');
+    assertOptionalString(args.taskId, 'taskId');
+    if (args.remoteBackend) {
+      if (!args.taskId) throw new Error('taskId is required to delete a remote task');
+      return deleteRemoteTask(args.remoteBackend, args.taskId);
+    }
     validatePath(args.projectRoot, 'projectRoot');
     validateBranchName(args.branchName, 'branchName');
     assertBoolean(args.deleteBranch, 'deleteBranch');
-    assertOptionalString(args.taskId, 'taskId');
     return deleteTask({
       taskId: args.taskId,
       agentIds: args.agentIds,

@@ -1026,6 +1026,7 @@ export function TerminalView(props: TerminalViewProps) {
         dockerMountWorktreeParent: props.dockerMountWorktreeParent,
         shareDockerAgentAuth: store.shareDockerAgentAuth,
         attachExisting,
+        remoteBackend: store.tasks[taskId]?.remoteBackend,
         onOutput,
       })
         // eslint-disable-next-line solid/reactivity -- promise callbacks are not reactive contexts

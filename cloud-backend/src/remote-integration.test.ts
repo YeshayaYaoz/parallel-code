@@ -101,7 +101,9 @@ describe('standalone service — real remote-protocol round trip', () => {
       (msg) =>
         msg.type === 'output' &&
         msg.agentId === agentId &&
-        Buffer.from(msg.data as string, 'base64').toString('utf8').includes('hello-cloud-backend'),
+        Buffer.from(msg.data as string, 'base64')
+          .toString('utf8')
+          .includes('hello-cloud-backend'),
     );
 
     expect(output.type).toBe('output');

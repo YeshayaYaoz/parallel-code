@@ -687,7 +687,11 @@ export function startRemoteServer(opts: {
     projectId: string;
     name: string;
     prompt: string;
-  }) => Promise<{ taskId: string }>;
+    agentCommand?: string;
+    agentArgs?: string[];
+  }) => Promise<{ taskId: string; agentId: string }>;
+  /** Close/remove a top-level task created via createTaskFromMobile. */
+  deleteTaskFromMobile?: (taskId: string) => Promise<void>;
 }): Promise<RemoteServer> {
   const token = randomBytes(24).toString('base64url');
   const subtaskToken = randomBytes(24).toString('base64url');
@@ -814,7 +818,12 @@ export function startRemoteServer(opts: {
       // read it from the process's own boot logs (`fly logs`), the same
       // trust basis as reading a PIN off a screen. The read-only mobile
       // token is rejected either way.
-      if (url.pathname === '/api/mobile/projects' || url.pathname === '/api/mobile/tasks') {
+      const mobileTaskMatch = url.pathname.match(/^\/api\/mobile\/tasks\/([^/]+)$/);
+      if (
+        url.pathname === '/api/mobile/projects' ||
+        url.pathname === '/api/mobile/tasks' ||
+        mobileTaskMatch
+      ) {
         if (tokenClass !== 'paired' && tokenClass !== 'coordinator')
           return jsonEnd(403, { error: 'forbidden' });
 
@@ -839,16 +848,44 @@ export function startRemoteServer(opts: {
               if (!name) return jsonEnd(400, { error: 'name must be a non-empty string' });
               if (name.length > 200)
                 return jsonEnd(400, { error: 'name must be 200 characters or fewer' });
-              const prompt = validateRestPrompt(body.prompt, true);
-              if (typeof prompt !== 'string') return jsonEnd(400, prompt);
+              // Prompt is optional here (unlike the coordinator sub-task routes) —
+              // a client that delivers its own initial prompt once the agent is
+              // ready (as the desktop app's remote-backend toggle does, reusing
+              // its existing local prompt-delivery logic) has nothing to send yet.
+              const prompt = validateRestPrompt(body.prompt, false);
+              if (prompt !== undefined && typeof prompt !== 'string') return jsonEnd(400, prompt);
               const projectId = typeof body.projectId === 'string' ? body.projectId : '';
               if (!projectId)
                 return jsonEnd(400, { error: 'projectId must be a non-empty string' });
-              createTask({ projectId, name, prompt })
-                .then((r) => jsonEnd(201, { taskId: r.taskId }))
+              if (body.agentCommand !== undefined && typeof body.agentCommand !== 'string')
+                return jsonEnd(400, { error: 'agentCommand must be a string' });
+              if (
+                body.agentArgs !== undefined &&
+                (!Array.isArray(body.agentArgs) ||
+                  !body.agentArgs.every((a) => typeof a === 'string'))
+              )
+                return jsonEnd(400, { error: 'agentArgs must be an array of strings' });
+              createTask({
+                projectId,
+                name,
+                prompt: prompt ?? '',
+                agentCommand: body.agentCommand as string | undefined,
+                agentArgs: body.agentArgs as string[] | undefined,
+              })
+                .then((r) => jsonEnd(201, { taskId: r.taskId, agentId: r.agentId }))
                 .catch((err) => jsonEnd(500, { error: String(err) }));
             })
             .catch(() => jsonEnd(400, { error: 'bad request' }));
+          return;
+        }
+
+        if (mobileTaskMatch && req.method === 'DELETE') {
+          const deleteTask = opts.deleteTaskFromMobile;
+          if (!deleteTask) return jsonEnd(503, { error: 'task deletion unavailable' });
+          const taskId = decodeURIComponent(mobileTaskMatch[1]);
+          deleteTask(taskId)
+            .then(() => jsonEnd(200, { ok: true }))
+            .catch((err) => jsonEnd(500, { error: String(err) }));
           return;
         }
 

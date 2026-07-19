@@ -9,7 +9,11 @@ describe('coordinator-persistence', () => {
 
     mockNextTask({ id: 'task-1', branch_name: 'task/restore-me', worktree_path: '/tmp/restore' });
     coordinator.registerCoordinator('coord-1', 'proj-1');
-    await coordinator.createTask({ name: 'restore-me', prompt: 'do', coordinatorTaskId: 'coord-1' });
+    await coordinator.createTask({
+      name: 'restore-me',
+      prompt: 'do',
+      coordinatorTaskId: 'coord-1',
+    });
 
     const snapshot = snapshotCoordinatorState(coordinator);
 

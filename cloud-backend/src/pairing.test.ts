@@ -31,8 +31,9 @@ let stop: () => Promise<void>;
 let mobileToken = '';
 let coordinatorToken = '';
 let generatePin: () => { pin: string; expiresAt: number };
-const createTaskFromMobile = vi.fn(async () => ({ taskId: 'task-123' }));
+const createTaskFromMobile = vi.fn(async () => ({ taskId: 'task-123', agentId: 'agent-123' }));
 const getProjects = vi.fn(async () => [{ id: 'proj-1', name: 'Repo One' }]);
+const deleteTaskFromMobile = vi.fn(async () => undefined);
 
 function req(method: string, path: string, token: string, body?: unknown): Promise<Resp> {
   return new Promise((resolve, reject) => {
@@ -69,6 +70,7 @@ async function pair(): Promise<string> {
 beforeEach(async () => {
   createTaskFromMobile.mockClear();
   getProjects.mockClear();
+  deleteTaskFromMobile.mockClear();
   const srv = await startRemoteServer({
     port: 0,
     host: '127.0.0.1',
@@ -78,6 +80,7 @@ beforeEach(async () => {
     getCoordinator: () => null,
     getProjects,
     createTaskFromMobile,
+    deleteTaskFromMobile,
   });
   port = srv.port;
   stop = srv.stop;
@@ -170,7 +173,7 @@ describe('paired-mobile routes', () => {
       prompt: 'Investigate the crash',
     });
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ taskId: 'task-123' });
+    expect(await res.json()).toEqual({ taskId: 'task-123', agentId: 'agent-123' });
     expect(createTaskFromMobile).toHaveBeenCalledWith({
       projectId: 'proj-1',
       name: 'Fix bug',
@@ -178,18 +181,83 @@ describe('paired-mobile routes', () => {
     });
   });
 
-  it('rejects task creation with a missing name or prompt', async () => {
+  it('paired token can create a task with an agent command override', async () => {
+    const paired = await pair();
+    await req('POST', '/api/mobile/tasks', paired, {
+      projectId: 'proj-1',
+      name: 'Fix bug',
+      prompt: 'x',
+      agentCommand: 'codex',
+      agentArgs: ['--yolo'],
+    });
+    expect(createTaskFromMobile).toHaveBeenCalledWith({
+      projectId: 'proj-1',
+      name: 'Fix bug',
+      prompt: 'x',
+      agentCommand: 'codex',
+      agentArgs: ['--yolo'],
+    });
+  });
+
+  it('rejects a non-string agentCommand or non-string-array agentArgs', async () => {
+    const paired = await pair();
+    expect(
+      (
+        await req('POST', '/api/mobile/tasks', paired, {
+          projectId: 'proj-1',
+          name: 'n',
+          prompt: 'x',
+          agentCommand: 123,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await req('POST', '/api/mobile/tasks', paired, {
+          projectId: 'proj-1',
+          name: 'n',
+          prompt: 'x',
+          agentArgs: ['ok', 5],
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  it('paired token can delete a task', async () => {
+    const paired = await pair();
+    const res = await req('DELETE', '/api/mobile/tasks/task-123', paired);
+    expect(res.status).toBe(200);
+    expect(deleteTaskFromMobile).toHaveBeenCalledWith('task-123');
+  });
+
+  it('mobile token cannot delete a task', async () => {
+    expect((await req('DELETE', '/api/mobile/tasks/task-123', mobileToken)).status).toBe(403);
+    expect(deleteTaskFromMobile).not.toHaveBeenCalled();
+  });
+
+  it('rejects task creation with a missing name or projectId', async () => {
     const paired = await pair();
     expect(
       (await req('POST', '/api/mobile/tasks', paired, { projectId: 'proj-1', prompt: 'x' })).status,
     ).toBe(400);
     expect(
-      (await req('POST', '/api/mobile/tasks', paired, { projectId: 'proj-1', name: 'n' })).status,
-    ).toBe(400);
-    expect(
       (await req('POST', '/api/mobile/tasks', paired, { name: 'n', prompt: 'x' })).status,
     ).toBe(400);
     expect(createTaskFromMobile).not.toHaveBeenCalled();
+  });
+
+  it('allows task creation with no prompt — a client that delivers its own once ready', async () => {
+    const paired = await pair();
+    const res = await req('POST', '/api/mobile/tasks', paired, {
+      projectId: 'proj-1',
+      name: 'n',
+    });
+    expect(res.status).toBe(201);
+    expect(createTaskFromMobile).toHaveBeenCalledWith({
+      projectId: 'proj-1',
+      name: 'n',
+      prompt: '',
+    });
   });
 
   it('paired token still has read-only agent access', async () => {

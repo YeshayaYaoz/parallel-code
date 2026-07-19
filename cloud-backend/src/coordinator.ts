@@ -32,11 +32,7 @@ import { truncateDiffForTool } from './diff-format.js';
 const execAsync = promisify(execFile);
 import { createTask as createBackendTask, deleteTask } from './tasks.js';
 import { getSkipPermissionsArgs, listAgents } from './agents.js';
-import {
-  pickInstalledModelForMode,
-  PROVIDER_TO_AGENT_ID,
-  type RoutingMode,
-} from './registry.js';
+import { pickInstalledModelForMode, PROVIDER_TO_AGENT_ID, type RoutingMode } from './registry.js';
 import {
   spawnAgent,
   writeToAgent,

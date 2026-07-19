@@ -136,6 +136,7 @@ function toPersistedTask(task: Task, agentDefs: AgentDef[], collapsed?: boolean)
     gitIsolation: task.gitIsolation,
     baseBranch: task.baseBranch,
     externalWorktree: task.externalWorktree,
+    remoteBackend: task.remoteBackend,
     skipPermissions: task.skipPermissions,
     dockerMode: task.dockerMode,
     dockerSource: task.dockerSource,
@@ -670,6 +671,7 @@ export async function loadState(): Promise<void> {
           gitIsolation: legacy.gitIsolation ?? (legacy.directMode ? 'direct' : 'worktree'),
           baseBranch: legacy.baseBranch || undefined,
           externalWorktree: pt.externalWorktree,
+          remoteBackend: pt.remoteBackend,
           skipPermissions: pt.skipPermissions === true,
           dockerMode: pt.dockerMode === true ? true : undefined,
           dockerSource:
@@ -777,6 +779,7 @@ export async function loadState(): Promise<void> {
             legacyCollapsed.gitIsolation ?? (legacyCollapsed.directMode ? 'direct' : 'worktree'),
           baseBranch: legacyCollapsed.baseBranch || undefined,
           externalWorktree: pt.externalWorktree,
+          remoteBackend: pt.remoteBackend,
           skipPermissions: pt.skipPermissions === true,
           dockerMode: pt.dockerMode === true ? true : undefined,
           dockerSource:

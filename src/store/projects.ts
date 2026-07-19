@@ -66,6 +66,7 @@ export function updateProject(
       | 'coverageReportPath'
       | 'terminalBookmarks'
       | 'isGitRepo'
+      | 'remoteBackend'
     >
   >,
 ): void {

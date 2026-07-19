@@ -2776,8 +2776,7 @@ describe('Coordinator deregisterCoordinator', () => {
   });
 
   it('deregister cleans up backend resource maps for child tasks', async () => {
-    const { unsubscribeFromAgent } =
-      await vi.importMock<typeof import('./pty.js')>('./pty.js');
+    const { unsubscribeFromAgent } = await vi.importMock<typeof import('./pty.js')>('./pty.js');
     coordinator.registerCoordinator('coord-1', 'proj-1');
     await coordinator.createTask({ name: 'test', prompt: 'do', coordinatorTaskId: 'coord-1' });
 
@@ -4049,8 +4048,7 @@ describe('Coordinator cleanupTask — failure resilience', () => {
   });
 
   it('subscriber is unregistered on cleanup', async () => {
-    const { unsubscribeFromAgent } =
-      await vi.importMock<typeof import('./pty.js')>('./pty.js');
+    const { unsubscribeFromAgent } = await vi.importMock<typeof import('./pty.js')>('./pty.js');
     await coordinator.createTask({ name: 'test', prompt: 'do', coordinatorTaskId: 'coord-1' });
     expect(mockSubscribeToAgent).toHaveBeenCalled();
 
@@ -4306,7 +4304,6 @@ describe('Multiple Docker coordinators — isolation', () => {
 
 // ─── Sub-task per-container spawn (#31) ──────────────────────────────────────
 
-
 // ─── Interrupted bootstrap / exit before prompt delivery ─────────────────────
 
 describe('Coordinator interrupted bootstrap', () => {
@@ -4449,8 +4446,7 @@ describe('Coordinator close with active sub-tasks', () => {
     await coordinator.createTask({ name: 'task-a', prompt: 'do a', coordinatorTaskId: 'coord-1' });
     await coordinator.createTask({ name: 'task-b', prompt: 'do b', coordinatorTaskId: 'coord-1' });
 
-    const { killAgent: mockKillFn } =
-      await vi.importMock<typeof import('./pty.js')>('./pty.js');
+    const { killAgent: mockKillFn } = await vi.importMock<typeof import('./pty.js')>('./pty.js');
     vi.mocked(mockKillFn).mockClear();
 
     await coordinator.closeTask('task-a');
@@ -4603,8 +4599,7 @@ describe('Coordinator removeCoordinatedTask', () => {
   });
 
   it('unsubscribes the PTY output callback', async () => {
-    const { unsubscribeFromAgent } =
-      await vi.importMock<typeof import('./pty.js')>('./pty.js');
+    const { unsubscribeFromAgent } = await vi.importMock<typeof import('./pty.js')>('./pty.js');
     await coordinator.createTask({ name: 'test', prompt: 'do', coordinatorTaskId: 'coord-1' });
     const agentId = getAgentId();
 
@@ -4703,8 +4698,7 @@ describe('Coordinator removeCoordinatedTask', () => {
   });
 
   it('does NOT kill the agent (UI already did that)', async () => {
-    const { killAgent: mockKillFn } =
-      await vi.importMock<typeof import('./pty.js')>('./pty.js');
+    const { killAgent: mockKillFn } = await vi.importMock<typeof import('./pty.js')>('./pty.js');
     vi.mocked(mockKillFn).mockClear();
     await coordinator.createTask({ name: 'test', prompt: 'do', coordinatorTaskId: 'coord-1' });
     vi.mocked(mockKillFn).mockClear();
@@ -5115,7 +5109,6 @@ describe('Coordinator closeTask — per-task config isolation (two sub-tasks)', 
 });
 
 // ─── Docker per-container sub-task tests (#31) ───────────────────────────────
-
 
 // ─── waitForSignalDone requestId replay ──────────────────────────────────────
 
@@ -5583,7 +5576,6 @@ describe('Coordinator deregisterCoordinator — .mcp.json cleanup', () => {
     expect(mockUnlinkSync).not.toHaveBeenCalledWith('/tmp/.mcp.json');
   });
 });
-
 
 // ─── createTask vs concurrent deregisterCoordinator ──────────────────────────
 

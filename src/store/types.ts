@@ -65,6 +65,12 @@ export interface TerminalBookmark {
   command: string;
 }
 
+export interface RemoteBackendConfig {
+  url: string;
+  token: string;
+  projectId: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -78,6 +84,9 @@ export interface Project {
   coverageReportPath?: string;
   terminalBookmarks?: TerminalBookmark[];
   isGitRepo?: boolean; // undefined treated as true for backward compat
+  /** When set, new tasks for this project run on a cloud-backend instance
+   *  (see cloud-backend/) instead of locally — see EditProjectDialog.tsx. */
+  remoteBackend?: RemoteBackendConfig;
 }
 
 export interface Agent {
@@ -115,6 +124,11 @@ export interface Task {
   gitIsolation: GitIsolationMode;
   baseBranch?: string;
   externalWorktree?: boolean;
+  /** Snapshotted from the owning project at creation time — if the project's
+   *  remote config later changes, this task keeps talking to the backend it
+   *  was actually created on. Presence (not gitIsolation) is the source of
+   *  truth for "is this task's agent running remotely." */
+  remoteBackend?: RemoteBackendConfig;
   skipPermissions?: boolean;
   dockerMode?: boolean;
   dockerSource?: DockerSource;
@@ -193,6 +207,7 @@ export interface PersistedTask {
   gitIsolation: GitIsolationMode;
   baseBranch?: string;
   externalWorktree?: boolean;
+  remoteBackend?: RemoteBackendConfig;
   skipPermissions?: boolean;
   dockerMode?: boolean;
   dockerSource?: DockerSource;
