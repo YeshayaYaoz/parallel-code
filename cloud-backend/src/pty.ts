@@ -318,3 +318,9 @@ export function getAgentMeta(
   const s = sessions.get(agentId);
   return s ? { taskId: s.taskId, agentId: s.agentId, isShell: s.isShell } : null;
 }
+
+/** Return the current column width of an agent's PTY. */
+export function getAgentCols(agentId: string): number {
+  const s = sessions.get(agentId);
+  return s ? s.proc.cols : 80;
+}
