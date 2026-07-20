@@ -103,25 +103,28 @@ repeat this whole guide with a different `app` name and volume per project.
 
 ### First deploy
 
-Every `fly` command below passes the build/config location explicitly
-(`fly deploy cloud-backend`, not a bare `fly deploy` after `cd`) — flyctl's
-directory auto-detection has been observed to silently build the wrong
-context (a stale/unrelated `package.json` cache-hits, then the `tsconfig.json`
-`COPY` fails as "not found") when the command isn't run from exactly the
-right directory. Passing the directory explicitly sidesteps that regardless
-of your shell's cwd; run these from the repo root:
+Every `fly` command below passes `cloud-backend` as the working directory —
+that single positional argument is enough to tell flyctl "this is the app
+root," which is where it finds both `fly.toml` (with the `app =` name) and
+`Dockerfile`. **Don't also add `--config`/`--dockerfile` pointing back at
+`cloud-backend/...` on top of it** — flyctl resolves those paths _relative to
+the working directory you just gave it_, so `--config cloud-backend/fly.toml`
+actually looks for the nonexistent `cloud-backend/cloud-backend/fly.toml`,
+silently falls back to an empty config, and fails with a confusing "missing
+an app name" error. The working-directory argument alone is both necessary
+and sufficient; run these from the repo root:
 
 ```sh
 # Creates the app on Fly and asks a few questions (region, etc.) — it will
 # offer to rewrite `app =` in fly.toml to a name you own; accept that,
 # each project needs a unique app name.
-fly launch --no-deploy --copy-config --config cloud-backend/fly.toml cloud-backend
+fly launch --no-deploy --copy-config cloud-backend
 
 # Create the persistent volume fly.toml's [[mounts]] expects. Must be in the
 # same region you picked above (iad by default — pass --region to match).
 fly volumes create cloud_backend_data --size 1 --region iad --config cloud-backend/fly.toml
 
-fly deploy --config cloud-backend/fly.toml --dockerfile cloud-backend/Dockerfile cloud-backend
+fly deploy cloud-backend
 ```
 
 The service needs an actual git repo on its volume before it can create
@@ -185,7 +188,7 @@ guarantee, and Fly's pricing can change.
 ### Updating
 
 ```sh
-fly deploy --config cloud-backend/fly.toml --dockerfile cloud-backend/Dockerfile cloud-backend
+fly deploy cloud-backend
 ```
 
 This rebuilds the image and does a rolling restart. In-progress PTY sessions
