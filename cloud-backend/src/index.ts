@@ -41,7 +41,18 @@ if (!PROJECT_ROOT) {
     'PROJECT_ROOT is not set — plain task creation (POST /api/mobile/tasks) will be unavailable until it is configured.',
   );
 } else if (!existsSync(PROJECT_ROOT)) {
-  throw new Error(`PROJECT_ROOT does not exist: ${PROJECT_ROOT}`);
+  // Deliberately a warning, not a crash: this is the normal state right after
+  // a first deploy — `fly secrets set PROJECT_ROOT=...` typically happens
+  // before the repo is actually cloned onto the volume (see README's "First
+  // deploy"). Throwing here previously crash-looped the whole service until
+  // Fly gave up restarting it, which made the machine unreachable exactly
+  // when the operator needed to SSH in and clone the repo. Task creation
+  // will fail with a normal error (caught and returned as a 500, not a
+  // process crash) until the path actually exists.
+  logWarn(
+    'index',
+    `PROJECT_ROOT is set to ${PROJECT_ROOT} but that path does not exist yet — plain task creation will fail until it's cloned there (see README's "First deploy").`,
+  );
 }
 
 // Plain (non-coordinator) task bookkeeping — the Coordinator only tracks its
