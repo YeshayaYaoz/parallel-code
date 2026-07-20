@@ -51,7 +51,6 @@ RUN groupadd --gid 1000 agent \
 
 ENV SHELL=/bin/bash \
     HOME=/home/agent \
-    NODE_ENV=production \
     DATA_DIR=/data \
     HOST=0.0.0.0 \
     PORT=7777
@@ -63,6 +62,13 @@ RUN npm ci
 COPY --chown=agent:agent tsconfig.json ./
 COPY --chown=agent:agent src ./src
 RUN npm run build && rm -rf src tsconfig.json && npm prune --omit=dev
+
+# Set only after the build: npm treats NODE_ENV=production as an implicit
+# --omit=dev for every subsequent npm command in this image, including the
+# `npm ci` above — set any earlier and it silently skips devDependencies
+# (typescript among them), so `npm run build`'s `tsc` isn't on PATH and the
+# build fails with "tsc: not found" (reproduced on a real Fly.io build).
+ENV NODE_ENV=production
 
 USER agent
 EXPOSE 7777
