@@ -9,6 +9,16 @@ app = "parallel-code-cloud-backend"
 primary_region = "iad"
 
 [build]
+  # Explicit, not left to flyctl's default resolution — a `fly deploy` run
+  # from any directory other than cloud-backend/ silently built the wrong
+  # context in practice (npm ci got cache-hit from an unrelated package.json,
+  # then the tsconfig.json COPY failed as "not found"). Paths here are
+  # resolved relative to this file, so they're correct regardless of cwd —
+  # but always deploy with `fly deploy cloud-backend` (passing the directory
+  # explicitly) from the repo root, or `cd cloud-backend && fly deploy`, to
+  # avoid relying on flyctl's directory auto-detection at all. See README.md.
+  dockerfile = "Dockerfile"
+  ignorefile = ".dockerignore"
 
 [env]
   NODE_ENV = "production"

@@ -103,19 +103,37 @@ repeat this whole guide with a different `app` name and volume per project.
 
 ### First deploy
 
-```sh
-cd cloud-backend
+Every `fly` command below passes the build/config location explicitly
+(`fly deploy cloud-backend`, not a bare `fly deploy` after `cd`) — flyctl's
+directory auto-detection has been observed to silently build the wrong
+context (a stale/unrelated `package.json` cache-hits, then the `tsconfig.json`
+`COPY` fails as "not found") when the command isn't run from exactly the
+right directory. Passing the directory explicitly sidesteps that regardless
+of your shell's cwd; run these from the repo root:
 
+```sh
 # Creates the app on Fly and asks a few questions (region, etc.) — it will
 # offer to rewrite `app =` in fly.toml to a name you own; accept that,
 # each project needs a unique app name.
-fly launch --no-deploy --copy-config
+fly launch --no-deploy --copy-config --config cloud-backend/fly.toml cloud-backend
 
 # Create the persistent volume fly.toml's [[mounts]] expects. Must be in the
 # same region you picked above (iad by default — pass --region to match).
-fly volumes create cloud_backend_data --size 1 --region iad
+fly volumes create cloud_backend_data --size 1 --region iad --config cloud-backend/fly.toml
 
-fly deploy
+fly deploy --config cloud-backend/fly.toml --dockerfile cloud-backend/Dockerfile cloud-backend
+```
+
+The service needs an actual git repo on its volume before it can create
+tasks — clone one onto it after the first deploy:
+
+```sh
+fly secrets set PROJECT_ROOT=/data/repo --config cloud-backend/fly.toml
+
+fly ssh console --config cloud-backend/fly.toml
+# inside the machine:
+git clone https://github.com/you/your-repo /data/repo
+exit
 ```
 
 `fly deploy` builds `cloud-backend/Dockerfile` and starts one machine. The
@@ -123,12 +141,16 @@ service prints its connection URL (with an embedded mobile-scoped token) on
 boot:
 
 ```sh
-fly logs
+fly logs --config cloud-backend/fly.toml
 # [server] cloud-backend listening on http://<host>:7777?token=<token>
+# [server] operator (coordinator) token: <token>
 ```
 
 That URL is what the desktop app (or `src/remote` mobile client) points at
-instead of `localhost:7777` — same WebSocket/REST protocol either way.
+instead of `localhost:7777` — same WebSocket/REST protocol either way. The
+separately-logged operator token (not the one embedded in the URL) is what
+you paste into the desktop app's project settings — see "Creating a task"
+above.
 
 ### Scale-to-zero
 
@@ -163,8 +185,7 @@ guarantee, and Fly's pricing can change.
 ### Updating
 
 ```sh
-cd cloud-backend
-fly deploy
+fly deploy --config cloud-backend/fly.toml --dockerfile cloud-backend/Dockerfile cloud-backend
 ```
 
 This rebuilds the image and does a rolling restart. In-progress PTY sessions
