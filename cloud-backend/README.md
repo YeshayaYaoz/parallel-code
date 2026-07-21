@@ -139,6 +139,20 @@ git clone https://github.com/you/your-repo /data/repo
 exit
 ```
 
+`fly ssh console` connects as **root**, while the service itself runs as the
+unprivileged `agent` user — so a repo cloned this way is root-owned, and
+git's dubious-ownership check will refuse to let `agent` touch it (every
+git call in `git.ts` then collapses that refusal into a misleading
+"repository with no commits" error). The Dockerfile already sets
+`safe.directory '*'` system-wide to prevent this, but if you're running an
+image built before that fix, add the exception by hand after cloning:
+
+```sh
+fly ssh console --config cloud-backend/fly.toml
+git config --system --add safe.directory /data/repo
+exit
+```
+
 `fly deploy` builds `cloud-backend/Dockerfile` and starts one machine. The
 service prints its connection URL (with an embedded mobile-scoped token) on
 boot:

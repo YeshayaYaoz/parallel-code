@@ -41,8 +41,16 @@ RUN mkdir -p /etc/apt/keyrings \
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 
 # Default git config so commits work out of the box inside the container.
+# safe.directory '*' is required because the first-deploy repo clone happens
+# via `fly ssh console` (root) while the server itself runs as the `agent`
+# user below — git's dubious-ownership check otherwise refuses to touch a
+# repo owned by a different user, which every git call in git.ts then
+# swallows into a misleading "repository with no commits" error (reproduced
+# on a real deploy). Safe here since this container is single-tenant, one
+# repo at a time, with no cross-user trust boundary to protect.
 RUN git config --system init.defaultBranch main \
-    && git config --system advice.detachedHead false
+    && git config --system advice.detachedHead false \
+    && git config --system --add safe.directory '*'
 
 # Non-root user that owns the app and the persistent data volume.
 RUN groupadd --gid 1000 agent \
