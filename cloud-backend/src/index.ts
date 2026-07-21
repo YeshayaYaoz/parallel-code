@@ -34,6 +34,11 @@ const PROJECT_NAME = process.env.PROJECT_NAME ?? path.basename(PROJECT_ROOT ?? P
 const AGENT_COMMAND = process.env.AGENT_COMMAND ?? 'claude';
 const AGENT_ARGS = process.env.AGENT_ARGS ? (JSON.parse(process.env.AGENT_ARGS) as string[]) : [];
 const PLAIN_TASK_PROMPT_DELAY_MS = 3000;
+// A stable operator token, so the desktop app's saved "Remote backend" token
+// survives scale-to-zero cold starts (which otherwise mint a fresh random one
+// each boot — see server-remote.ts's fixedCoordinatorToken). Set via
+// `fly secrets set OPERATOR_TOKEN=...`. Leave unset for a random per-boot token.
+const OPERATOR_TOKEN = process.env.OPERATOR_TOKEN;
 
 if (!PROJECT_ROOT) {
   logWarn(
@@ -85,6 +90,7 @@ const server = await startRemoteServer({
   port: PORT,
   host: HOST,
   staticDir: STATIC_DIR,
+  fixedCoordinatorToken: OPERATOR_TOKEN,
   getTaskName: (taskId) =>
     plainTaskNames.get(taskId) ?? coordinator.getTask(taskId)?.name ?? taskId,
   getAgentStatus: (agentId) => {

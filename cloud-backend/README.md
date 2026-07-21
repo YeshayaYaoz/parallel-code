@@ -35,6 +35,7 @@ copy has drifted.
 | `PROJECT_NAME`  | basename of `PROJECT_ROOT` | Display name for the same                                                                                                      |
 | `AGENT_COMMAND` | `claude`                   | CLI spawned for a newly created plain task                                                                                     |
 | `AGENT_ARGS`    | `[]`                       | JSON array of extra args, e.g. `'["--model","claude-opus-4-8"]'`                                                               |
+| `OPERATOR_TOKEN`| _(random per boot)_        | Pin the operator (coordinator) token to a fixed value so the desktop app's saved token survives scale-to-zero cold starts.    |
 
 ## Creating a task
 

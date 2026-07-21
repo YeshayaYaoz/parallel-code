@@ -692,8 +692,17 @@ export function startRemoteServer(opts: {
   }) => Promise<{ taskId: string; agentId: string }>;
   /** Close/remove a top-level task created via createTaskFromMobile. */
   deleteTaskFromMobile?: (taskId: string) => Promise<void>;
+  /**
+   * Pin the coordinator (operator) token to a fixed value instead of a fresh
+   * random one per boot. Needed for the headless cloud deployment: a scale-to-
+   * zero machine mints a new random token on every cold start, which would
+   * force the desktop app's saved "Remote backend" token to be re-pasted after
+   * every wake. Supplying a stable secret here keeps the saved token valid
+   * across restarts. When unset, behaviour is unchanged (random per boot).
+   */
+  fixedCoordinatorToken?: string;
 }): Promise<RemoteServer> {
-  const token = randomBytes(24).toString('base64url');
+  const token = opts.fixedCoordinatorToken || randomBytes(24).toString('base64url');
   const subtaskToken = randomBytes(24).toString('base64url');
   const mobileToken = randomBytes(24).toString('base64url');
   const ips = getNetworkIps();

@@ -270,6 +270,33 @@ describe('paired-mobile routes', () => {
   });
 });
 
+describe('fixedCoordinatorToken', () => {
+  it('pins the operator token to the supplied value and accepts it', async () => {
+    const srv = await startRemoteServer({
+      port: 0,
+      host: '127.0.0.1',
+      staticDir: '/nonexistent',
+      getTaskName: (id) => id,
+      getAgentStatus: () => ({ status: 'exited', exitCode: null, lastLine: '' }),
+      getCoordinator: () => null,
+      getProjects,
+      createTaskFromMobile,
+      deleteTaskFromMobile,
+      fixedCoordinatorToken: 'pinned-operator-token-123',
+    });
+    try {
+      expect(srv.token).toBe('pinned-operator-token-123');
+      const res = await fetch(
+        `http://127.0.0.1:${srv.port}/api/mobile/projects`,
+        { headers: { Authorization: 'Bearer pinned-operator-token-123' } },
+      );
+      expect(res.status).toBe(200);
+    } finally {
+      await srv.stop();
+    }
+  });
+});
+
 describe('toFriendlyListenError', () => {
   it('rewrites EADDRINUSE to an actionable message but keeps the code for retry', () => {
     const raw = Object.assign(new Error('listen EADDRINUSE: address already in use 0.0.0.0:7777'), {
