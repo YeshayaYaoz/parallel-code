@@ -136,22 +136,18 @@ fly secrets set PROJECT_ROOT=/data/repo --config cloud-backend/fly.toml
 fly ssh console --config cloud-backend/fly.toml
 # inside the machine:
 git clone https://github.com/you/your-repo /data/repo
+chown -R agent:agent /data/repo
 exit
 ```
 
-`fly ssh console` connects as **root**, while the service itself runs as the
-unprivileged `agent` user — so a repo cloned this way is root-owned, and
-git's dubious-ownership check will refuse to let `agent` touch it (every
-git call in `git.ts` then collapses that refusal into a misleading
-"repository with no commits" error). The Dockerfile already sets
-`safe.directory '*'` system-wide to prevent this, but if you're running an
-image built before that fix, add the exception by hand after cloning:
-
-```sh
-fly ssh console --config cloud-backend/fly.toml
-git config --system --add safe.directory /data/repo
-exit
-```
+The `chown` is required, not optional: `fly ssh console` connects as
+**root**, but the service runs as the unprivileged `agent` user. Without it,
+`agent` can't write under `/data/repo/.git` — task creation fails with
+`cannot lock ref ... unable to create directory` when git tries to make the
+worktree branch. (There's a related trust check too — git refuses to touch a
+repo owned by another user — which the Dockerfile already neutralizes with
+`safe.directory '*'`; on an image built before that fix, also run
+`git config --system --add safe.directory /data/repo`.)
 
 `fly deploy` builds `cloud-backend/Dockerfile` and starts one machine. The
 service prints its connection URL (with an embedded mobile-scoped token) on
