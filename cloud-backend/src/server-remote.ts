@@ -780,9 +780,31 @@ export function startRemoteServer(opts: {
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'no-referrer',
+    // This is a bearer-token API with no cookies, so a permissive origin is
+    // safe here: unlike cookies, a page can't get the browser to attach the
+    // Authorization header on its own, so CORS isn't protecting a session a
+    // third-party page could otherwise ride. Needed because the desktop
+    // app's renderer is a Chromium context (Electron) and enforces normal
+    // fetch() CORS against this cross-origin call (its own origin vs.
+    // https://*.fly.dev) — without this, requests fail with a generic
+    // "Failed to fetch" and no server-side error at all (reproduced testing
+    // the "Remote backend" project setting against a real deployment).
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Coordinator-Id, X-Done-Token',
   };
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    // Preflight: browsers send this ahead of any cross-origin request that
+    // carries an Authorization header, before the real request. It has no
+    // Authorization header of its own, so it must be answered here, before
+    // the auth check below would otherwise 401 it.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, SECURITY_HEADERS);
+      res.end();
+      return;
+    }
+
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
     // --- API routes (require auth) ---

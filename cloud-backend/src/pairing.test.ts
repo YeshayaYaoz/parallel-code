@@ -270,6 +270,25 @@ describe('paired-mobile routes', () => {
   });
 });
 
+describe('CORS', () => {
+  it('answers an OPTIONS preflight with 204 and the expected CORS headers', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/mobile/projects`, {
+      method: 'OPTIONS',
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('access-control-allow-headers')).toContain('Authorization');
+  });
+
+  it('includes Access-Control-Allow-Origin on a real authenticated response', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/mobile/projects`, {
+      headers: { Authorization: `Bearer ${coordinatorToken}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+});
+
 describe('fixedCoordinatorToken', () => {
   it('pins the operator token to the supplied value and accepts it', async () => {
     const srv = await startRemoteServer({
