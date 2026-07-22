@@ -166,6 +166,42 @@ separately-logged operator token (not the one embedded in the URL) is what
 you paste into the desktop app's project settings — see "Creating a task"
 above.
 
+### CLI agent authentication
+
+A newly created task spawns `AGENT_COMMAND` (`claude` by default) with no
+credentials of its own — it needs to authenticate the same way it would on
+any machine. `fly.toml` sets `HOME=/data/home`, on the persistent volume
+(not the container's ephemeral root filesystem), specifically so that
+whichever of the two options below you pick only has to be done **once**,
+not after every cold start/redeploy.
+
+**Option A — API key (fastest, pay-per-token billing):**
+
+```sh
+fly secrets set ANTHROPIC_API_KEY=sk-ant-... --config cloud-backend/fly.toml
+```
+
+The secret becomes an env var for the whole process, so every spawned
+`claude` picks it up immediately — no restart needed beyond the one
+`fly secrets set` already triggers.
+
+**Option B — interactive login (uses your existing Claude subscription,
+no separate API billing):**
+
+```sh
+fly ssh console --config cloud-backend/fly.toml
+# inside the machine — run the login AS the agent user (not root) so the
+# credential files land with the right ownership directly, matching the
+# same reason the git clone needed `safe.directory`/chown earlier:
+su agent -c "HOME=/data/home claude"
+# follow the printed URL + code to complete the browser login, then Ctrl+D
+exit
+```
+
+Either way, the credentials now live under `/data/home` on the volume —
+every future task's spawned CLI reuses them automatically, and they survive
+machine restarts and redeploys.
+
 ### Scale-to-zero
 
 `fly.toml` sets `min_machines_running = 0` and `auto_stop_machines = "stop"`,

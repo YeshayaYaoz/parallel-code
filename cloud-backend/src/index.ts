@@ -7,7 +7,7 @@
 // can attach to this process exactly as it already attaches to a desktop
 // instance, without any client-side changes.
 import path from 'path';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { Coordinator } from './coordinator.js';
@@ -39,6 +39,17 @@ const PLAIN_TASK_PROMPT_DELAY_MS = 3000;
 // each boot — see server-remote.ts's fixedCoordinatorToken). Set via
 // `fly secrets set OPERATOR_TOKEN=...`. Leave unset for a random per-boot token.
 const OPERATOR_TOKEN = process.env.OPERATOR_TOKEN;
+
+// Ensure $HOME exists on the volume before any CLI agent gets spawned into
+// it — a fresh volume has no /data/home yet, and some CLIs assume $HOME is
+// already a real directory rather than creating it themselves.
+if (process.env.HOME) {
+  try {
+    mkdirSync(process.env.HOME, { recursive: true });
+  } catch (err) {
+    logWarn('index', `failed to create HOME directory ${process.env.HOME}: ${String(err)}`);
+  }
+}
 
 if (!PROJECT_ROOT) {
   logWarn(

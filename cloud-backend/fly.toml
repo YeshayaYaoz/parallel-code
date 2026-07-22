@@ -23,6 +23,13 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   DATA_DIR = "/data"
+  # Overrides the Dockerfile's HOME=/home/agent, which lives on the machine's
+  # ephemeral root filesystem and is wiped on every redeploy (and sometimes on
+  # a plain restart). CLI agents (claude/codex/gemini) store their login
+  # credentials under $HOME — without this override, a one-time interactive
+  # login would need repeating after every cold start. index.ts creates this
+  # directory at boot if the volume doesn't have it yet.
+  HOME = "/data/home"
 
 [[mounts]]
   source = "cloud_backend_data"
