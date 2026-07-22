@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "sync-registry": "node scripts/sync-registry.mjs",
+    "sync-remote-client": "node scripts/sync-remote-client.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "npm run sync-registry && tsx src/index.ts",

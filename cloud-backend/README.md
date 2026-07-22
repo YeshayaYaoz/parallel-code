@@ -202,6 +202,40 @@ Either way, the credentials now live under `/data/home` on the volume —
 every future task's spawned CLI reuses them automatically, and they survive
 machine restarts and redeploys.
 
+### Browser access
+
+The desktop app's "Connect Phone" feature bundles a small SolidJS SPA
+(`src/remote/*`) that talks the same WebSocket/REST protocol this service
+exposes — so this deployment can serve that exact web client directly,
+letting you drive tasks from a plain browser tab instead of the desktop app
+or `curl`.
+
+It's a real build artifact, committed under `cloud-backend/public/` rather
+than built during `docker build`: `fly.toml` scopes the whole Docker build
+context to `cloud-backend/` (see "First deploy" above), so `../../src/remote`
+isn't reachable from inside that build. Whenever `src/remote` changes,
+regenerate and commit it before deploying:
+
+```sh
+cd cloud-backend
+npm run sync-remote-client
+git add public && git commit -m "Sync remote web client"
+```
+
+Then just open the app's URL with a token in the query string:
+
+```
+https://parallel-code-cloud-backend.fly.dev/?token=<token>
+```
+
+Unlike pairing a desktop instance (which needs a PIN because there's a
+physical screen to show one), this headless deployment has no screen at
+all — so `/api/mobile/*` already accepts the **operator (coordinator)
+token** directly (see "Creating a task" above), giving the browser client
+full access — viewing agents, creating tasks, everything — with no pairing
+step. Using the mobile-scoped token from the boot-logged URL instead gives
+read-only agent viewing, same as pairing a phone to a desktop instance would.
+
 ### Scale-to-zero
 
 `fly.toml` sets `min_machines_running = 0` and `auto_stop_machines = "stop"`,

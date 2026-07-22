@@ -69,6 +69,11 @@ RUN npm ci
 
 COPY --chown=agent:agent tsconfig.json ./
 COPY --chown=agent:agent src ./src
+# Pre-built by `npm run sync-remote-client` (must be run and committed before
+# building this image — see README's "Browser access"). The mobile/browser
+# web client's source (src/remote/*) lives outside this directory, which is
+# the entire build context Docker sees, so it can't be built in this stage.
+COPY --chown=agent:agent public ./public
 RUN npm run build && rm -rf src tsconfig.json && npm prune --omit=dev
 
 # Set only after the build: npm treats NODE_ENV=production as an implicit
