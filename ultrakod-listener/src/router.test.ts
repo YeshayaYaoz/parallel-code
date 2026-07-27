@@ -158,7 +158,9 @@ describe('processQueueOnce', () => {
     // under Node's default behavior. Assert that no longer happens, and that
     // the in-progress label still gets cleaned up despite the failure.
     ghMocks.listQueuedTasks.mockResolvedValue([task({ mode: 'balanced', needsRepoAccess: true })]);
-    ghMocks.runClaudeWorkflow.mockRejectedValue(new Error('network blip talking to GitHub Actions'));
+    ghMocks.runClaudeWorkflow.mockRejectedValue(
+      new Error('network blip talking to GitHub Actions'),
+    );
 
     const seenRejections: unknown[] = [];
     const onUnhandledRejection = (reason: unknown) => seenRejections.push(reason);

@@ -305,10 +305,9 @@ describe('fixedCoordinatorToken', () => {
     });
     try {
       expect(srv.token).toBe('pinned-operator-token-123');
-      const res = await fetch(
-        `http://127.0.0.1:${srv.port}/api/mobile/projects`,
-        { headers: { Authorization: 'Bearer pinned-operator-token-123' } },
-      );
+      const res = await fetch(`http://127.0.0.1:${srv.port}/api/mobile/projects`, {
+        headers: { Authorization: 'Bearer pinned-operator-token-123' },
+      });
       expect(res.status).toBe(200);
     } finally {
       await srv.stop();

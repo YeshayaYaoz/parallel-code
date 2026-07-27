@@ -1,6 +1,9 @@
 dist/
 dist-electron/
 dist-remote/
+# Committed compiled browser client bundle (see
+# cloud-backend/scripts/sync-remote-client.mjs) -- generated, not source.
+cloud-backend/public/
 release/
 node_modules/
 .worktrees/

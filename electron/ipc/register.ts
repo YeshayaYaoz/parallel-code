@@ -158,12 +158,21 @@ export function selectMcpJsonDir(worktreePath: string | undefined, projectRoot: 
   return worktreePath ?? projectRoot;
 }
 
-/** Path where `mcp-server.cjs` is copied inside the Docker-mounted worktree. */
+/**
+ * Path where `mcp-server.cjs` is copied inside the Docker-mounted worktree.
+ * Built with an explicit forward-slash join rather than `path.join`: on
+ * Windows, `path.join` would produce backslashes, but this path is also used
+ * verbatim as Claude's trust key and (via the Docker bind mount) resolved
+ * inside the always-Linux container — either context needs forward slashes
+ * regardless of the host OS, matching pty.ts's toContainerPath convention for
+ * the same reason.
+ */
 export function getDockerMcpServerDestPath(
   worktreePath: string | undefined,
   projectRoot: string,
 ): string {
-  return path.join(worktreePath ?? projectRoot, '.parallel-code', 'mcp-server.cjs');
+  const base = (worktreePath ?? projectRoot).replace(/[/\\]+$/, '');
+  return `${base}/.parallel-code/mcp-server.cjs`;
 }
 
 export interface CoordinatorMCPConfigOpts {

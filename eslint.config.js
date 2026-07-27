@@ -18,6 +18,13 @@ export default [
       // ultrakod-listener is a standalone package (own tsconfig, own build
       // output) — its dist/ isn't caught by the root-anchored 'dist/**' above.
       'ultrakod-listener/dist/**',
+      // Committed (not gitignored) compiled browser client bundle — see
+      // cloud-backend/scripts/sync-remote-client.mjs. Not caught by
+      // 'dist-remote/**' above (different directory name), and unlike a
+      // gitignored dist/ this one actually lands in CI's checkout, so it
+      // needs an explicit ignore or eslint reports hundreds of no-undef/
+      // no-unused-expressions errors against minified, browser-global code.
+      'cloud-backend/public/**',
       // Build config is excluded from electron tsconfig; ignore the config and its test.
       'electron/vite.config.electron.ts',
       'electron/vite.config.electron.test.ts',

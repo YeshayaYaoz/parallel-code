@@ -25,17 +25,17 @@ copy has drifted.
 
 ## Configuration
 
-| Env var         | Default                    | Meaning                                                                                                                        |
-| --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `PORT`          | `7777`                     | HTTP/WS listen port                                                                                                            |
-| `HOST`          | `0.0.0.0`                  | Listen address                                                                                                                 |
-| `DATA_DIR`      | `~/.parallel-code-cloud`   | Where `state.json`/`coordinator-snapshot.json` live (the Fly volume mount point in production)                                 |
-| `PROJECT_ROOT`  | _(unset)_                  | Git repo checkout this instance manages. **Required** for plain task creation (`/api/mobile/*`) — without it those routes 503. |
-| `PROJECT_ID`    | `default`                  | Arbitrary ID returned by `GET /api/mobile/projects`                                                                            |
-| `PROJECT_NAME`  | basename of `PROJECT_ROOT` | Display name for the same                                                                                                      |
-| `AGENT_COMMAND` | `claude`                   | CLI spawned for a newly created plain task                                                                                     |
-| `AGENT_ARGS`    | `[]`                       | JSON array of extra args, e.g. `'["--model","claude-opus-4-8"]'`                                                               |
-| `OPERATOR_TOKEN`| _(random per boot)_        | Pin the operator (coordinator) token to a fixed value so the desktop app's saved token survives scale-to-zero cold starts.    |
+| Env var          | Default                    | Meaning                                                                                                                        |
+| ---------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`           | `7777`                     | HTTP/WS listen port                                                                                                            |
+| `HOST`           | `0.0.0.0`                  | Listen address                                                                                                                 |
+| `DATA_DIR`       | `~/.parallel-code-cloud`   | Where `state.json`/`coordinator-snapshot.json` live (the Fly volume mount point in production)                                 |
+| `PROJECT_ROOT`   | _(unset)_                  | Git repo checkout this instance manages. **Required** for plain task creation (`/api/mobile/*`) — without it those routes 503. |
+| `PROJECT_ID`     | `default`                  | Arbitrary ID returned by `GET /api/mobile/projects`                                                                            |
+| `PROJECT_NAME`   | basename of `PROJECT_ROOT` | Display name for the same                                                                                                      |
+| `AGENT_COMMAND`  | `claude`                   | CLI spawned for a newly created plain task                                                                                     |
+| `AGENT_ARGS`     | `[]`                       | JSON array of extra args, e.g. `'["--model","claude-opus-4-8"]'`                                                               |
+| `OPERATOR_TOKEN` | _(random per boot)_        | Pin the operator (coordinator) token to a fixed value so the desktop app's saved token survives scale-to-zero cold starts.     |
 
 ## Creating a task
 
