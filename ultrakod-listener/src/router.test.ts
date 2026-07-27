@@ -150,4 +150,30 @@ describe('processQueueOnce', () => {
 
     expect(isAvailable('anthropic')).toBe(false);
   });
+
+  it('does not produce an unhandled rejection when the fire-and-forget coding task throws', async () => {
+    // Reproduces the real Railway crash: runCodingTask (not awaited, per the
+    // claude-queue.yml concurrency comment above) rejecting used to be a
+    // genuinely unhandled promise rejection, which crashes the whole process
+    // under Node's default behavior. Assert that no longer happens, and that
+    // the in-progress label still gets cleaned up despite the failure.
+    ghMocks.listQueuedTasks.mockResolvedValue([task({ mode: 'balanced', needsRepoAccess: true })]);
+    ghMocks.runClaudeWorkflow.mockRejectedValue(new Error('network blip talking to GitHub Actions'));
+
+    const seenRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => seenRejections.push(reason);
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    try {
+      await processQueueOnce();
+      // Let the fire-and-forget chain (catch + finally) fully settle.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(seenRejections).toEqual([]);
+      expect(ghMocks.removeLabel).toHaveBeenCalledWith(1, 'ultrakod-in-progress');
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
 });

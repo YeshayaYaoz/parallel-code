@@ -92,9 +92,25 @@ export async function processQueueOnce(): Promise<void> {
     await gh.addLabel(task.number, 'ultrakod-in-progress');
 
     if (task.needsRepoAccess) {
-      void runCodingTask(task, model).finally(() =>
-        gh.removeLabel(task.number, 'ultrakod-in-progress'),
-      );
+      // Deliberately not awaited: processQueueOnce dispatches this task and
+      // moves on to the next one immediately (claude-queue.yml's own
+      // concurrency group serializes the actual runs). Both the task and the
+      // label cleanup are caught inline -- an uncaught rejection here would
+      // otherwise be a genuinely unhandled promise rejection with nothing
+      // upstream ever awaiting or catching it, which crashes the whole
+      // process on Node's default unhandledRejection behavior (reproduced as
+      // the periodic Railway crashes: a single transient GitHub/provider
+      // failure on this path was enough to take down the poll loop and the
+      // health-check server with it).
+      void runCodingTask(task, model)
+        .catch((err) => {
+          console.error(`[ultrakod] runCodingTask failed for #${task.number}:`, err);
+        })
+        .finally(() => {
+          void gh.removeLabel(task.number, 'ultrakod-in-progress').catch((err) => {
+            console.error(`[ultrakod] removeLabel failed for #${task.number}:`, err);
+          });
+        });
     } else {
       try {
         await runQaTask(task, model);
