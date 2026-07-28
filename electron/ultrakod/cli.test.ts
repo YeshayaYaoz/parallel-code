@@ -1,3 +1,4 @@
+import path from 'path';
 import { describe, it, expect } from 'vitest';
 import { parseArgs } from './cli.js';
 
@@ -18,7 +19,11 @@ describe('parseArgs', () => {
   });
 
   it('parses --project as a space-separated value', () => {
+    // parseArgs resolves projectRoot via path.resolve, which is platform-
+    // dependent (e.g. '/tmp/repo' resolves against the current drive on
+    // Windows, not verbatim) -- compare against the same resolution rather
+    // than a hardcoded POSIX path.
     const args = parseArgs(['node', 'cli.cjs', 'status', '--project', '/tmp/repo']);
-    expect(args.projectRoot).toBe('/tmp/repo');
+    expect(args.projectRoot).toBe(path.resolve('/tmp/repo'));
   });
 });
