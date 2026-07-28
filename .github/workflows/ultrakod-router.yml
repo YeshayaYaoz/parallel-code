@@ -47,12 +47,12 @@ jobs:
           echo "| Model | Cost/1M tokens | Provider | Strengths |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|----------------|----------|-----------|" >> $GITHUB_STEP_SUMMARY
 
-          node dist-electron/ultrakod/cli.js models 2>&1 | while IFS= read -r line; do
+          node dist-electron/ultrakod/cli.cjs models 2>&1 | while IFS= read -r line; do
             echo "$line"
           done
 
           for MODEArg in cheap balanced extra; do
-            RESULT=$(node dist-electron/ultrakod/cli.js route --mode "$MODEArg" 2>&1)
+            RESULT=$(node dist-electron/ultrakod/cli.cjs route --mode "$MODEArg" 2>&1)
             RECOMMENDED=$(echo "$RESULT" | head -1)
             JSON=$(echo "$RESULT" | tail -1)
 

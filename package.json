@@ -8,7 +8,7 @@
   },
   "main": "dist-electron/main.js",
   "bin": {
-    "ultrakod": "dist-electron/ultrakod/cli.js"
+    "ultrakod": "dist-electron/ultrakod/cli.cjs"
   },
   "type": "module",
   "scripts": {
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "compile": "tsc -p electron/tsconfig.json",
     "build:mcp": "esbuild dist-electron/mcp/server.js --bundle --platform=node --format=cjs --outfile=dist-electron/mcp-server.cjs",
-    "build:ultrakod": "esbuild electron/ultrakod/cli.ts --bundle --platform=node --format=cjs --outfile=dist-electron/ultrakod/cli.js",
+    "build:ultrakod": "esbuild electron/ultrakod/cli.ts --bundle --platform=node --format=cjs --outfile=dist-electron/ultrakod/cli.cjs",
     "build:frontend": "cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build --config electron/vite.config.electron.ts",
     "build:remote": "vite build --config src/remote/vite.config.ts",
     "build": "npm run build:frontend && npm run build:remote && npm run compile && npm run build:mcp && npm run build:ultrakod && electron-builder",
@@ -124,7 +124,7 @@
     "asarUnpack": [
       "**/node-pty/**",
       "dist-electron/mcp-server.cjs",
-      "dist-electron/ultrakod/cli.js"
+      "dist-electron/ultrakod/cli.cjs"
     ],
     "extraResources": [
       {

@@ -16,7 +16,7 @@ import {
 } from './context.js';
 import { getModelForMode, MODEL_REGISTRY, type RoutingMode } from './registry.js';
 
-interface CLIArgs {
+export interface CLIArgs {
   command: string;
   projectRoot: string;
   mode?: RoutingMode;
@@ -26,7 +26,7 @@ interface CLIArgs {
   exclude?: string[];
 }
 
-function parseArgs(argv: string[]): CLIArgs {
+export function parseArgs(argv: string[]): CLIArgs {
   const args: CLIArgs = {
     command: '',
     projectRoot: process.cwd(),
@@ -51,7 +51,7 @@ function parseArgs(argv: string[]): CLIArgs {
         break;
       case 'mode':
       case 'm':
-        args.mode = value as RoutingMode;
+        args.mode = (value || argv[++i]) as RoutingMode;
         break;
       case 'model':
         args.model = value || argv[++i];
