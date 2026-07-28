@@ -5173,7 +5173,17 @@ describe('Coordinator hydrateTask — mcpConfigPath directory scoping', () => {
   it('Docker mode: dirname(serverPath)/subtask-{id}.json is accepted and config write occurs', () => {
     const taskId = 'task-valid-docker';
     const serverPath = '/srv/app/.parallel-code/mcp-server.js';
-    const dockerPath = join(dirname(serverPath), `subtask-${taskId}.json`);
+    // getSubTaskMcpConfigPath preserves serverPath's own forward-slash style
+    // instead of normalizing to the native separator (needed so a real
+    // Docker-internal serverPath, always forward-slash, round-trips
+    // correctly on Windows). Match that directly with a forward-slash join
+    // instead of native path.join, which would silently diverge from the
+    // real function's output on Windows. (Not calling the real function
+    // itself here: importing it directly regressed this file's atomic.js
+    // mock by resolving that real module before the test harness's own
+    // vi.mock('./atomic.js', ...) registered, since import order determines
+    // module-evaluation order and this file's harness import comes later.)
+    const dockerPath = `${dirname(serverPath)}/subtask-${taskId}.json`;
 
     coordinator.setDockerContainerName('coord-1', 'parallel-code-coord');
     mockAtomicWriteFileSync.mockClear();

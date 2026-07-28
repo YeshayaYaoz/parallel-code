@@ -128,18 +128,20 @@ describe('git exclude helpers', () => {
 
       const actualExcludePath = resolveGitInfoExcludePath(worktreePath);
       if (actualExcludePath === null) throw new Error('resolveGitInfoExcludePath returned null');
-      // Compare via realpath on both sides rather than a raw string, since a
-      // Windows CI runner's account name can canonicalize differently
-      // depending on the resolution path taken -- git itself (which this
-      // function shells out to) reported the long form (...\runneradmin\...)
-      // while this test's own fs.realpathSync(root) resolved the short 8.3
-      // form (...\RUNNER~1\...) for the identical physical directory.
-      // What actually matters (and what the rest of this test verifies
-      // behaviorally) is that both name the same file, not that the string
-      // representations match.
-      expect(fs.realpathSync(path.dirname(actualExcludePath))).toBe(
-        fs.realpathSync(path.join(root, '.git', 'info')),
-      );
+      // Verify by filesystem identity (device + inode), not string equality
+      // or even a realpath'd string: on a real Windows CI runner,
+      // fs.realpathSync itself canonicalized the *same physical directory*
+      // to two different spellings of the account name depending on which
+      // path chain reached it (git's own long-form report vs. a fresh
+      // realpathSync call giving the short 8.3 form), so no string-based
+      // comparison -- raw or realpath'd -- reliably held. dev+ino identifies
+      // the actual filesystem entry regardless of any spelling.
+      const actualStat = fs.statSync(path.dirname(actualExcludePath));
+      const expectedStat = fs.statSync(path.join(root, '.git', 'info'));
+      expect({ dev: actualStat.dev, ino: actualStat.ino }).toEqual({
+        dev: expectedStat.dev,
+        ino: expectedStat.ino,
+      });
       expect(path.basename(actualExcludePath)).toBe('exclude');
 
       appendGitInfoExcludeBlock(worktreePath, '# probe', '# probe\n/probe\n');
