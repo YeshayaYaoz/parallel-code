@@ -1,5 +1,5 @@
 import { createSignal, onMount, Show, Switch, Match } from 'solid-js';
-import { initAuth, getPairedToken } from './auth';
+import { initAuth } from './auth';
 import { connect } from './ws';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
@@ -24,10 +24,11 @@ export function App() {
     setView('detail');
   }
 
-  // Creating a task needs the elevated paired token; pair first if we don't
-  // have one yet.
+  // NewTaskScreen tries the real API call first and only falls back to
+  // pairing (via onNeedsPairing) if that call actually fails with 401/403 --
+  // the current token (e.g. a coordinator token) may already be sufficient.
   function startNewTask() {
-    setView(getPairedToken() ? 'newtask' : 'pair');
+    setView('newtask');
   }
 
   function onConnected() {
