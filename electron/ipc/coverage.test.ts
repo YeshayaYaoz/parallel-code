@@ -19,6 +19,7 @@ vi.mock('fs', async () => {
 });
 
 import fs from 'fs';
+import path from 'path';
 import { readCoverageSummary } from './coverage.js';
 
 describe('readCoverageSummary', () => {
@@ -80,7 +81,7 @@ describe('readCoverageSummary', () => {
 
     expect(summary?.format).toBe('istanbul-summary');
     expect(summary?.generatedAt).toBe('2026-04-22T15:00:00.000Z');
-    expect(summary?.reportPath).toBe('/repo/coverage/coverage-summary.json');
+    expect(summary?.reportPath).toBe(path.join('/repo', 'coverage', 'coverage-summary.json'));
     expect(summary?.totals.lines.pct).toBe(80);
     expect(summary?.files['src/App.tsx']?.functions.pct).toBe(100);
     expect(summary?.files['src/lib/file.ts']?.branches.pct).toBe(0);
@@ -115,7 +116,7 @@ describe('readCoverageSummary', () => {
     const summary = await readCoverageSummary('/repo');
 
     expect(summary?.format).toBe('lcov');
-    expect(summary?.reportPath).toBe('/repo/coverage/lcov.info');
+    expect(summary?.reportPath).toBe(path.join('/repo', 'coverage', 'lcov.info'));
     expect(summary?.totals.lines.pct).toBe(50);
     expect(summary?.totals.functions.pct).toBe(100);
     expect(summary?.totals.branches.pct).toBe(50);
@@ -174,7 +175,7 @@ describe('readCoverageSummary', () => {
     const summary = await readCoverageSummary('/repo');
 
     expect(summary?.format).toBe('lcov');
-    expect(summary?.reportPath).toBe('/repo/coverage/sp2/lcov.info');
+    expect(summary?.reportPath).toBe(path.join('/repo', 'coverage', 'sp2', 'lcov.info'));
     expect(summary?.files['src/lib/file.ts']?.lines.pct).toBe(100);
   });
 
@@ -293,7 +294,7 @@ describe('readCoverageSummary', () => {
 
     const summary = await readCoverageSummary('/repo');
 
-    expect(summary?.reportPath).toBe('/repo/coverage/sp2/lcov.info');
+    expect(summary?.reportPath).toBe(path.join('/repo', 'coverage', 'sp2', 'lcov.info'));
     expect(summary?.files['src/lib/file.ts']?.lines.pct).toBe(100);
   });
 
@@ -315,7 +316,7 @@ describe('readCoverageSummary', () => {
 
     const summary = await readCoverageSummary('/repo', 'artifacts/custom-coverage.json');
 
-    expect(summary?.reportPath).toBe('/repo/artifacts/custom-coverage.json');
+    expect(summary?.reportPath).toBe(path.resolve('/repo', 'artifacts/custom-coverage.json'));
   });
 
   it('returns null when every default report path is missing', async () => {

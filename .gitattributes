@@ -1,0 +1,23 @@
+# Normalize line endings to LF in the repository and on checkout, regardless
+# of a contributor's local core.autocrlf setting. Windows git installs
+# commonly default core.autocrlf=true, which checks out *.mjs (and other
+# extensions git doesn't special-case) with CRLF line endings -- suspected
+# contributor to a Windows-CI-only "SyntaxError: Invalid or unexpected
+# token" in scripts/check-coordinator-run.test.mjs that doesn't reproduce
+# on Linux/macOS and gave no line/column detail to confirm further.
+* text=auto eol=lf
+
+# Windows-only shell wrappers genuinely need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets: never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

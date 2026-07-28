@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { mockExecFileSync, mockExecFile, mockChildProcessSpawn, mockPtySpawn, mockLogDebug } =
   vi.hoisted(() => {
     const mockExecFileSync = vi.fn((command: string, args?: string[]) => {
-      if (command === 'which' && args?.[0] === 'nonexistent-binary-xyz') {
+      // validateCommand uses 'where' on win32 and 'which' elsewhere -- this
+      // mock only checked 'which', so on a real Windows CI runner (which
+      // genuinely calls 'where') it silently reported every bare command as
+      // found, including this deliberately-nonexistent one.
+      if ((command === 'which' || command === 'where') && args?.[0] === 'nonexistent-binary-xyz') {
         throw new Error('not found');
       }
       return '';
@@ -372,14 +376,26 @@ describe('spawnAgent docker mode', () => {
   });
 
   it('redacts shell command strings in spawn debug logs', () => {
-    spawnAgent(
-      createMockWindow(),
-      buildSpawnArgs({
-        command: '/bin/sh',
-        args: ['-c', 'codex exec "prompt containing private context"'],
-        dockerMode: false,
-      }),
-    );
+    // redactedSpawnArgs only redacts when the command is literally shaped
+    // like a POSIX shell ('/bin/sh' or *//sh), so the fixture has to stay
+    // '/bin/sh' to exercise that branch at all -- it can't be swapped for a
+    // real cross-platform executable the way other tests in this file do.
+    // '/bin/sh' genuinely doesn't exist on Windows, so validateCommand's
+    // real fs.accessSync check (which spawnAgent calls first) would reject
+    // it there; stub it out for just this one call instead.
+    const accessSyncSpy = vi.spyOn(fs, 'accessSync').mockImplementation(() => undefined);
+    try {
+      spawnAgent(
+        createMockWindow(),
+        buildSpawnArgs({
+          command: '/bin/sh',
+          args: ['-c', 'codex exec "prompt containing private context"'],
+          dockerMode: false,
+        }),
+      );
+    } finally {
+      accessSyncSpy.mockRestore();
+    }
 
     const ctx = getSpawnCommandLogCtx();
 
@@ -423,7 +439,11 @@ describe('spawnAgent docker mode', () => {
 
         const containerHome = `${DOCKER_CONTAINER_HOME}/agent-${agentId}`;
         const volumeFlags = getFlagValues(getLastSpawnCall().args, '-v');
-        const expectedHostDir = `${home}/.parallel-code/agent-auth/${command}/${relDir}`;
+        // pty.ts builds this host dir with path.join (native separator,
+        // including re-joining relDir's own '/' for entries like
+        // '.config/opencode') -- match that construction exactly rather than
+        // hand-rolling a forward-slash template, which mismatches on Windows.
+        const expectedHostDir = path.join(home, '.parallel-code', 'agent-auth', command, relDir);
         expect(volumeFlags).toContain(`${expectedHostDir}:${containerHome}/${relDir}`);
       },
     );
@@ -437,7 +457,7 @@ describe('spawnAgent docker mode', () => {
         buildSpawnArgs({ command: 'claude', shareDockerAgentAuth: true }),
       );
 
-      const hostDir = `${home}/.parallel-code/agent-auth/claude/.claude`;
+      const hostDir = path.join(home, '.parallel-code', 'agent-auth', 'claude', '.claude');
       expect(fs.existsSync(hostDir)).toBe(true);
     });
 
@@ -453,7 +473,13 @@ describe('spawnAgent docker mode', () => {
 
       const containerHome = `${DOCKER_CONTAINER_HOME}/agent-${agentId}`;
       const volumeFlags = getFlagValues(getLastSpawnCall().args, '-v');
-      const expectedHostFile = `${home}/.parallel-code/agent-auth/claude/.claude.json`;
+      const expectedHostFile = path.join(
+        home,
+        '.parallel-code',
+        'agent-auth',
+        'claude',
+        '.claude.json',
+      );
       expect(volumeFlags).toContain(`${expectedHostFile}:${containerHome}/.claude.json`);
       expect(JSON.parse(fs.readFileSync(expectedHostFile, 'utf8'))).toMatchObject({
         projects: {
@@ -840,7 +866,10 @@ describe('spawnAgent session reattach', () => {
 
 describe('validateCommand', () => {
   it('does not throw for a command found in PATH', () => {
-    expect(() => validateCommand('/bin/sh')).not.toThrow();
+    // process.execPath (the node binary running this test) is a real,
+    // absolute, executable path on every platform this test runs on --
+    // '/bin/sh' only holds that property on POSIX.
+    expect(() => validateCommand(process.execPath)).not.toThrow();
   });
 
   it('throws a descriptive error for a missing command', () => {
@@ -946,7 +975,12 @@ describe('spawnAgent — Windows npm .cmd shim spawn safety', () => {
       );
       const lastCall = mockPtySpawn.mock.lastCall as [string, string[] | string, unknown];
       const [command, commandLine] = lastCall;
-      expect(command).toBe('cmd.exe');
+      // pty.ts uses process.env.ComSpec || 'cmd.exe' -- the bare literal is
+      // only reached when ComSpec is unset, which is true when spoofing
+      // win32 on a non-Windows test runner but not on a genuine Windows
+      // machine, where ComSpec is always set (typically to the full
+      // C:\Windows\system32\cmd.exe path).
+      expect(command).toBe(process.env.ComSpec || 'cmd.exe');
       expect(typeof commandLine).toBe('string');
       expect(commandLine).toContain('claude.cmd');
       // The extensionless script must never be the spawn target.
@@ -987,7 +1021,12 @@ describe('spawnAgent — Windows npm .cmd shim spawn safety', () => {
       );
       const lastCall = mockPtySpawn.mock.lastCall as [string, string[] | string, unknown];
       const [command, commandLine] = lastCall;
-      expect(command).toBe('cmd.exe');
+      // pty.ts uses process.env.ComSpec || 'cmd.exe' -- the bare literal is
+      // only reached when ComSpec is unset, which is true when spoofing
+      // win32 on a non-Windows test runner but not on a genuine Windows
+      // machine, where ComSpec is always set (typically to the full
+      // C:\Windows\system32\cmd.exe path).
+      expect(command).toBe(process.env.ComSpec || 'cmd.exe');
       expect(typeof commandLine).toBe('string');
       expect(commandLine).toMatch(/^\/d \/s \/c "/);
       expect(commandLine).toContain('claude.cmd');
@@ -1390,11 +1429,17 @@ describe('seedClaudeProjectTrust — file permissions', () => {
       }),
     );
 
-    const hostFile = `${home}/.parallel-code/agent-auth/claude/.claude.json`;
+    const hostFile = path.join(home, '.parallel-code', 'agent-auth', 'claude', '.claude.json');
     expect(fs.existsSync(hostFile)).toBe(true);
-    const stat = fs.statSync(hostFile);
-    // mode & 0o777 strips file-type bits; 0o600 = owner r/w, no group/other access
-    expect(stat.mode & 0o777).toBe(0o600);
+    // NTFS has no owner/group/other permission model to enforce or report --
+    // the mode option is effectively a no-op there beyond the read-only
+    // attribute, so stat().mode always comes back ~0o666 regardless of what
+    // was requested. Reproduced on a real Windows CI run.
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(hostFile);
+      // mode & 0o777 strips file-type bits; 0o600 = owner r/w, no group/other access
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
   });
 });
 

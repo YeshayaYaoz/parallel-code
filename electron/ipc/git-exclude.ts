@@ -5,6 +5,19 @@ import path from 'path';
 export type AppendGitInfoExcludeResult = 'appended' | 'present' | 'missing' | 'failed';
 type ExecFileSync = typeof childProcess.execFileSync;
 
+/**
+ * Joins a filename onto a base path using the base's own separator style
+ * rather than the host OS's native one. `path.join` always normalizes its
+ * *entire* result to the native separator -- on Windows that silently
+ * rewrites an already-forward-slash base (as `git rev-parse
+ * --git-common-dir` can return, and as this function's callers pass in
+ * tests) into backslashes, corrupting it.
+ */
+function joinPreservingSeparatorStyle(base: string, ...parts: string[]): string {
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/';
+  return [base.replace(/[/\\]+$/, ''), ...parts].join(sep);
+}
+
 export function resolveGitInfoExcludePath(
   worktreePath: string,
   execFileSyncImpl: ExecFileSync = childProcess.execFileSync,
@@ -16,8 +29,8 @@ export function resolveGitInfoExcludePath(
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 3000,
     }).trim();
-    const commonDir = path.isAbsolute(out) ? out : path.join(worktreePath, out);
-    return path.join(commonDir, 'info', 'exclude');
+    const commonDir = path.isAbsolute(out) ? out : joinPreservingSeparatorStyle(worktreePath, out);
+    return joinPreservingSeparatorStyle(commonDir, 'info', 'exclude');
   } catch {
     return null;
   }

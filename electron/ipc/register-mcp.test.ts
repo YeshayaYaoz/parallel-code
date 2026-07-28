@@ -143,9 +143,15 @@ describe('Layer 3 — MCP startup pipeline (no Electron, real FS)', () => {
     });
     const p = path.join(worktreePath, '.mcp.json');
     fs.writeFileSync(p, JSON.stringify(cfg), { mode: 0o600 });
-    const stat = fs.statSync(p);
-    // mode & 0o777 masks off file-type bits; 0o600 = owner r/w only
-    expect(stat.mode & 0o777).toBe(0o600);
+    // NTFS has no owner/group/other permission model to enforce or report --
+    // the mode option is effectively a no-op there beyond the read-only
+    // attribute, so stat().mode always comes back ~0o666 regardless of what
+    // was requested. Reproduced on a real Windows CI run.
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(p);
+      // mode & 0o777 masks off file-type bits; 0o600 = owner r/w only
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
   });
 
   it('non-Docker path: no copy, .mcp.json still written to worktree', () => {

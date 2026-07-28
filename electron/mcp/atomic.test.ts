@@ -15,6 +15,18 @@ async function makeDir() {
   return dir;
 }
 
+/**
+ * Asserts a file's POSIX permission bits, skipped on Windows: NTFS has no
+ * owner/group/other permission model to enforce or report -- fs.chmod/mode
+ * options are effectively a no-op there beyond the read-only attribute, so
+ * stat().mode always reports something like 0o666 regardless of what was
+ * requested. Reproduced on a real Windows CI run.
+ */
+function expectPosixMode(mode: number, expected: number): void {
+  if (process.platform === 'win32') return;
+  expect(mode & 0o777).toBe(expected);
+}
+
 describe('atomicWriteFile (async)', () => {
   it('writes content to the target path', async () => {
     const d = await makeDir();
@@ -45,7 +57,7 @@ describe('atomicWriteFile (async)', () => {
     const target = join(d, 'secret.json');
     await atomicWriteFile(target, 'data', { mode: 0o600 });
     const s = await stat(target);
-    expect(s.mode & 0o777).toBe(0o600);
+    expectPosixMode(s.mode, 0o600);
   });
 
   it('preserves existing 0600 mode on overwrite when no mode specified', async () => {
@@ -54,7 +66,7 @@ describe('atomicWriteFile (async)', () => {
     await atomicWriteFile(target, 'original', { mode: 0o600 });
     await atomicWriteFile(target, 'overwritten'); // no mode option
     const s = await stat(target);
-    expect(s.mode & 0o777).toBe(0o600);
+    expectPosixMode(s.mode, 0o600);
     expect(await readFile(target, 'utf8')).toBe('overwritten');
   });
 
@@ -94,7 +106,7 @@ describe('atomicWriteFileSync (sync)', () => {
     const target = join(d, 'secret.json');
     atomicWriteFileSync(target, 'data', { mode: 0o600 });
     const s = await stat(target);
-    expect(s.mode & 0o777).toBe(0o600);
+    expectPosixMode(s.mode, 0o600);
   });
 
   it('preserves existing 0600 mode on overwrite when no mode specified', async () => {
@@ -103,7 +115,7 @@ describe('atomicWriteFileSync (sync)', () => {
     atomicWriteFileSync(target, 'original', { mode: 0o600 });
     atomicWriteFileSync(target, 'overwritten'); // no mode option
     const s = await stat(target);
-    expect(s.mode & 0o777).toBe(0o600);
+    expectPosixMode(s.mode, 0o600);
     expect(await readFile(target, 'utf8')).toBe('overwritten');
   });
 

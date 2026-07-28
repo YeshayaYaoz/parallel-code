@@ -1,5 +1,5 @@
 import os from 'os';
-import { join, dirname } from 'path';
+import { dirname } from 'path';
 import { atomicWriteFile, atomicWriteFileSync } from './atomic.js';
 
 export interface SubTaskMcpConfigOpts {
@@ -46,6 +46,22 @@ export function getMCPRemoteServerUrl(
  *
  * In host mode, use the OS temp directory (existing behaviour).
  */
+/**
+ * Joins a filename onto a base path using the base's own separator style
+ * rather than the host OS's native one. `path.join` always normalizes its
+ * *entire* result to the native separator -- on Windows that silently
+ * rewrites an already-POSIX-style base (as this function receives whenever
+ * dirname(serverPath) or a config-supplied tempDir is forward-slash, e.g. a
+ * Docker-internal path from getDockerMcpServerDestPath) into backslashes,
+ * corrupting it. A real `os.tmpdir()` default on Windows is itself already
+ * backslash-native, so detecting and preserving whichever style the base
+ * already uses handles both cases correctly with a single join.
+ */
+function joinPreservingSeparatorStyle(base: string, name: string): string {
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/';
+  return base.replace(/[/\\]+$/, '') + sep + name;
+}
+
 export function getSubTaskMcpConfigPath(
   dockerContainerName: string | null | undefined,
   serverPath: string,
@@ -53,8 +69,8 @@ export function getSubTaskMcpConfigPath(
   tempDir = os.tmpdir(),
 ): string {
   return dockerContainerName
-    ? join(dirname(serverPath), `subtask-${taskId}.json`)
-    : join(tempDir, `parallel-code-subtask-${taskId}.json`);
+    ? joinPreservingSeparatorStyle(dirname(serverPath), `subtask-${taskId}.json`)
+    : joinPreservingSeparatorStyle(tempDir, `parallel-code-subtask-${taskId}.json`);
 }
 
 export function buildSubTaskMcpConfig(args: SubTaskMcpConfigOpts): SubTaskMcpConfig {
