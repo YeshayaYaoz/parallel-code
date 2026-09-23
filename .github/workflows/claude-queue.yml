@@ -27,8 +27,11 @@ name: Claude Task Queue
 # specific task right now, rather than waiting for the next cron tick.
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
+  # Cron disabled — this fired every 15 minutes (~96 runs/day) polling for
+  # queued-task issues. Re-enable by uncommenting when the queue is in use
+  # again; the listener service can still drive it via workflow_dispatch.
+  # schedule:
+  #   - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       issue_number:

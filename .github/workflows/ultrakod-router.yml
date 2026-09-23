@@ -1,8 +1,11 @@
 name: Ultrakod Model Router
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
+  # Cron disabled — this fired every 15 minutes (~96 runs/day) with no one
+  # watching the output. Re-enable by uncommenting when the router is
+  # actually needed again; manual runs still work via workflow_dispatch.
+  # schedule:
+  #   - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       mode:
